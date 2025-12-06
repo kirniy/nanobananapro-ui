@@ -1,6 +1,10 @@
-# Dreamint
+# Nano Banana Pro UI
 
-Dreamint is a browser-based workspace for generating and editing images with the Gemini 3 Pro Image Preview model on FAL or the Gemini API. It focuses on quick prompts, format/quality tweaks, and lightweight history so you can experiment without extra setup.
+A fork of [Dreamint](https://github.com/Angais/dreamint) by [@Angais](https://github.com/Angais).
+
+Browser-based workspace for generating and editing images with the Gemini 3 Pro Image Preview model on FAL or the Gemini API. Focuses on quick prompts, format/quality tweaks, and lightweight history so you can experiment without extra setup.
+
+**Live deployment:** https://nanobananapro-ui.vercel.app
 
 > WARNING: YOU USE THIS AT YOUR OWN RISK. YOU ARE RESPONSIBLE FOR ANY API COSTS, ERRORS, OR MISBEHAVIOR.
 
@@ -55,3 +59,23 @@ npm run dev
 - `npm run dev` — start Next.js with Turbopack
 - `npm run build` — production build
 - `npm run lint` — ESLint
+
+## Deploying to Vercel
+
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Login to Vercel
+vercel login
+
+# Deploy
+vercel --yes
+
+# Optionally set a custom alias
+vercel alias set <deployment-url> nanobananapro-ui.vercel.app
+```
+
+## Credits
+
+Original project: [Dreamint](https://github.com/Angais/dreamint) by [@Angais](https://github.com/Angais)
