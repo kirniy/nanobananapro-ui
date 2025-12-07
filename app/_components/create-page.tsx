@@ -14,7 +14,9 @@ import { Lightbox } from "./create-page/lightbox";
 import { AttachmentLightbox } from "./create-page/attachment-lightbox";
 import { createId, groupByDate, normalizeImages } from "./create-page/utils";
 import type { GalleryEntry, Generation, PromptAttachment } from "./create-page/types";
-import { clearPending, loadPending, restoreGenerations, persistGenerations, savePending, deleteGenerationData, cleanOrphanedImages } from "./create-page/storage";
+import { clearPending, loadPending, restoreGenerations, persistGenerations, savePending, deleteGenerationData, cleanOrphanedImages, persistFavorites, restoreFavorites } from "./create-page/storage";
+import { generateSmartFilename } from "./create-page/utils";
+import { KeyboardShortcutsPanel } from "./create-page/keyboard-shortcuts-panel";
 
 const defaultPrompt =
   "Cinematic shot of a futuristic city at night, neon lights, rain reflections, highly detailed, 8k resolution";
@@ -187,7 +189,10 @@ export function CreatePage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [lightboxSelection, setLightboxSelection] = useState<{ generationId: string; imageIndex: number } | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [showShortcutsPanel, setShowShortcutsPanel] = useState(false);
   const storageHydratedRef = useRef(false);
+  const favoritesHydratedRef = useRef(false);
   const pendingHydratedRef = useRef(false);
   const pendingReconciledRef = useRef(false);
   const cleanupRanRef = useRef(false);
@@ -252,11 +257,13 @@ export function CreatePage() {
 
         let generationData: Generation[] | null = null;
         let pendingData: Generation[] | null = null;
+        let favoritesData: Set<string> = new Set();
 
         try {
-          const [restoredGenerations, restoredPending] = await Promise.all([
+          const [restoredGenerations, restoredPending, restoredFavorites] = await Promise.all([
             restoreGenerations(),
             loadPending(),
+            restoreFavorites(),
           ]);
 
           if (Array.isArray(restoredGenerations)) {
@@ -267,6 +274,8 @@ export function CreatePage() {
             pendingData = restoredPending;
             pendingHydratedRef.current = restoredPending.length > 0;
           }
+
+          favoritesData = restoredFavorites;
         } catch (storageError) {
           console.error("Storage restoration failed", storageError);
         }
@@ -288,6 +297,8 @@ export function CreatePage() {
               })),
             );
           }
+          setFavorites(favoritesData);
+          favoritesHydratedRef.current = true;
         }
       } catch (error) {
         console.error("Unable to restore Seedream state", error);
@@ -407,6 +418,15 @@ export function CreatePage() {
 
     void savePending(pendingGenerations);
   }, [pendingGenerations]);
+
+  // Persist favorites when they change
+  useEffect(() => {
+    if (!favoritesHydratedRef.current || typeof window === "undefined") {
+      return;
+    }
+
+    void persistFavorites(favorites);
+  }, [favorites]);
 
   const displayFeed = activeFeed;
   const hasGenerations = displayFeed.length > 0;
@@ -779,7 +799,7 @@ export function CreatePage() {
       const format = entry.outputFormat ?? "png";
       const extension = format === "jpeg" ? "jpg" : format;
       link.href = url;
-      link.download = `dreamint-${Date.now()}.${extension}`;
+      link.download = generateSmartFilename(entry.prompt, extension);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -983,6 +1003,103 @@ export function CreatePage() {
     [displayFeed, error, generations, pendingGenerations, setError, setLightboxSelection],
   );
 
+  const handleToggleFavorite = useCallback(
+    (generationId: string, imageIndex: number) => {
+      const favoriteId = `${generationId}:${imageIndex}`;
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        if (next.has(favoriteId)) {
+          next.delete(favoriteId);
+        } else {
+          next.add(favoriteId);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleToggleShortcutsPanel = useCallback(() => {
+    setShowShortcutsPanel((prev) => !prev);
+  }, []);
+
+  const handleUpscale = useCallback(
+    (entry: GalleryEntry, targetQuality: QualityKey) => {
+      // Create a new generation with the same prompt but higher quality
+      const pendingId = createId("pending");
+      const pendingSize = calculateImageSize(entry.aspect as AspectKey, targetQuality);
+      const inputImageSnapshot = entry.inputImages?.map((image) => ({ ...image })) ?? [];
+
+      const pendingGeneration: Generation = {
+        id: pendingId,
+        prompt: entry.prompt,
+        aspect: entry.aspect,
+        quality: targetQuality,
+        outputFormat: entry.outputFormat ?? defaultOutputFormat,
+        provider: entry.provider ?? "fal",
+        size: pendingSize,
+        createdAt: new Date().toISOString(),
+        inputImages: inputImageSnapshot,
+        images: [""], // Single image for upscale
+      };
+
+      debugLog("upscale:start", {
+        pendingId,
+        fromQuality: entry.quality,
+        toQuality: targetQuality,
+        size: pendingSize,
+      });
+
+      setIsSettingsOpen(false);
+      setError(null);
+      setPendingGenerations((previous) => [pendingGeneration, ...previous]);
+
+      const generationPromise = generateSeedream({
+        prompt: entry.prompt,
+        aspect: entry.aspect as AspectKey,
+        quality: targetQuality,
+        numImages: 1,
+        provider: entry.provider ?? "fal",
+        outputFormat: entry.outputFormat ?? defaultOutputFormat,
+        apiKey: apiKey.trim() || undefined,
+        geminiApiKey: geminiApiKey.trim() || undefined,
+        inputImages: inputImageSnapshot,
+      });
+
+      generationPromise
+        .then((result) => {
+          debugLog("upscale:success", {
+            pendingId,
+            rawImageCount: result.images.length,
+            size: result.size,
+          });
+
+          const normalizedImages = normalizeImages(result.images);
+          const generation: Generation = {
+            ...result,
+            id: createId("generation"),
+            images: normalizedImages,
+          };
+
+          setGenerations((previous) => [generation, ...previous]);
+        })
+        .catch((generationError: unknown) => {
+          const message =
+            generationError instanceof Error
+              ? generationError.message
+              : "Upscale failed.";
+          debugLog("upscale:error", { pendingId, message, error: generationError });
+          setError(message);
+        })
+        .finally(() => {
+          setPendingGenerations((previous) =>
+            previous.filter((gen) => gen.id !== pendingId),
+          );
+        });
+    },
+    [apiKey, geminiApiKey],
+  );
+
   const handleUsePrompt = useCallback(
     async (value: string, inputImages: Generation["inputImages"]) => {
       setPrompt(value);
@@ -1015,16 +1132,25 @@ export function CreatePage() {
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed left-6 top-6 z-50 hidden flex-col items-center gap-1 select-none 2xl:flex"
+        className="pointer-events-none fixed left-6 top-6 z-50 hidden flex-col items-center gap-2 select-none 2xl:flex"
       >
-        <NextImage
-          src="/Dreaming.png"
-          alt="Dreamint logo"
-          width={28}
-          height={28}
-          className="h-7 w-7 rounded-md object-cover grayscale"
-        />
-        <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white">Dreamint</span>
+        <div className="flex items-center gap-2">
+          <NextImage
+            src="/banana-logo.svg"
+            alt="Nano Banana Pro"
+            width={32}
+            height={32}
+            className="h-8 w-8 drop-shadow-[0_0_8px_rgba(255,215,0,0.3)]"
+          />
+          <div className="flex flex-col">
+            <span className="text-sm font-bold tracking-tight text-[var(--accent-primary)]" style={{ fontFamily: 'var(--font-display)' }}>
+              Nano Banana
+            </span>
+            <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-[var(--text-muted)]">
+              Pro Studio
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -1072,6 +1198,8 @@ export function CreatePage() {
                 onPreviewInputImage={handlePreviewInputImage}
                 onDeleteGeneration={handleDeleteGeneration}
                 onRetryGeneration={handleRetryGeneration}
+                favorites={favorites}
+                onToggleFavorite={handleToggleFavorite}
               />
             ))
           ) : (
@@ -1079,7 +1207,13 @@ export function CreatePage() {
           )}
           </main>
         ) : (
-          <GalleryView generations={generations} onExpand={handleExpand} />
+          <GalleryView
+            generations={generations}
+            onExpand={handleExpand}
+            favorites={favorites}
+            onToggleFavorite={handleToggleFavorite}
+            onUsePrompt={handleUsePrompt}
+          />
         )}
       </div>
       
@@ -1132,8 +1266,20 @@ export function CreatePage() {
           canGoPrev={canGoPrev}
           canGoNext={canGoNext}
           onEdit={() => { void handleLightboxEdit(lightboxEntry); }}
+          currentIndex={lightboxIndex}
+          totalCount={galleryEntries.length}
+          isFavorite={favorites.has(`${lightboxEntry.generationId}:${lightboxEntry.imageIndex}`)}
+          onToggleFavorite={() => handleToggleFavorite(lightboxEntry.generationId, lightboxEntry.imageIndex)}
+          onUpscale={(targetQuality) => handleUpscale(lightboxEntry, targetQuality)}
+          onShowShortcuts={handleToggleShortcutsPanel}
+          allEntries={galleryEntries}
+          onNavigateToEntry={(entry) => setLightboxSelection({ generationId: entry.generationId, imageIndex: entry.imageIndex })}
+          favorites={favorites}
         />
       ) : null}
+      {showShortcutsPanel && (
+        <KeyboardShortcutsPanel onClose={() => setShowShortcutsPanel(false)} />
+      )}
     </div>
   );
 }

@@ -1,11 +1,19 @@
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 
-import { getAspectDescription, getQualityLabel } from "../../lib/seedream-options";
+import { getAspectDescription, getQualityLabel, type QualityKey } from "../../lib/seedream-options";
 import { CompareSlider } from "./compare-slider";
-import { ArrowLeftIcon, ArrowRightIcon, DownloadIcon, PlusIcon, SpinnerIcon } from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon, DownloadIcon, PlusIcon, SpinnerIcon, HeartIcon, HeartFilledIcon, CopyIcon, CheckIcon, UpscaleIcon, KeyboardIcon } from "./icons";
 import type { GalleryEntry } from "./types";
+import { generateSmartFilename } from "./utils";
+
+// Upscale options based on current quality
+const UPSCALE_OPTIONS: Record<QualityKey, QualityKey[]> = {
+  "1k": ["2k", "4k"],
+  "2k": ["4k"],
+  "4k": [],
+};
 
 type LightboxProps = {
   entry: GalleryEntry;
@@ -17,6 +25,16 @@ type LightboxProps = {
   canGoPrev: boolean;
   canGoNext: boolean;
   onEdit?: () => void;
+  currentIndex?: number;
+  totalCount?: number;
+  // New props for Midjourney-style features
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
+  onUpscale?: (targetQuality: QualityKey) => void;
+  onShowShortcuts?: () => void;
+  allEntries?: GalleryEntry[];
+  onNavigateToEntry?: (entry: GalleryEntry) => void;
+  favorites?: Set<string>;
 };
 
 export function Lightbox({
@@ -29,19 +47,65 @@ export function Lightbox({
   canGoPrev,
   canGoNext,
   onEdit,
+  currentIndex = 0,
+  totalCount = 1,
+  isFavorite = false,
+  onToggleFavorite,
+  onUpscale,
+  onShowShortcuts,
+  allEntries = [],
+  onNavigateToEntry,
+  favorites = new Set(),
 }: LightboxProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const thumbnailReelRef = useRef<HTMLDivElement>(null);
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [selectedReferenceIndex, setSelectedReferenceIndex] = useState(0);
   const [compareSliderPosition, setCompareSliderPosition] = useState(50);
   const [isDownloadingComparison, setIsDownloadingComparison] = useState(false);
-  
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [showUpscaleMenu, setShowUpscaleMenu] = useState(false);
+  const [heartBurst, setHeartBurst] = useState(false);
+  const [showPromptExpanded, setShowPromptExpanded] = useState(false);
+
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
   const hasReferences = entry.inputImages && entry.inputImages.length > 0;
+  const zoomPercentage = Math.round(transform.scale * 100);
+  const upscaleOptions = UPSCALE_OPTIONS[entry.quality as QualityKey] || [];
+  const canUpscale = upscaleOptions.length > 0 && onUpscale;
+
+  const handleCopyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(entry.prompt);
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy prompt", error);
+    }
+  };
+
+  const handleFavoriteClick = useCallback(() => {
+    if (!onToggleFavorite) return;
+    if (!isFavorite) {
+      setHeartBurst(true);
+      setTimeout(() => setHeartBurst(false), 400);
+    }
+    onToggleFavorite();
+  }, [onToggleFavorite, isFavorite]);
+
+  // Scroll thumbnail into view when current entry changes
+  useEffect(() => {
+    if (thumbnailReelRef.current && currentIndex >= 0) {
+      const thumbnail = thumbnailReelRef.current.children[currentIndex] as HTMLElement;
+      if (thumbnail) {
+        thumbnail.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }
+  }, [currentIndex]);
 
   useEffect(() => {
     setIsCompareMode(false);
@@ -69,6 +133,11 @@ export function Lightbox({
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
+      // Ignore if user is typing in an input
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
       if (event.key === "ArrowLeft" && canGoPrev) {
         event.preventDefault();
         onPrev();
@@ -81,7 +150,43 @@ export function Lightbox({
 
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        if (showUpscaleMenu) {
+          setShowUpscaleMenu(false);
+        } else {
+          onClose();
+        }
+      }
+
+      // L - Toggle favorite
+      if (event.key === "l" || event.key === "L") {
+        event.preventDefault();
+        handleFavoriteClick();
+      }
+
+      // C - Copy prompt
+      if (event.key === "c" || event.key === "C") {
+        event.preventDefault();
+        void handleCopyPrompt();
+      }
+
+      // D - Download
+      if (event.key === "d" || event.key === "D") {
+        event.preventDefault();
+        if (!isDownloading) {
+          onDownload();
+        }
+      }
+
+      // U - Toggle upscale menu
+      if ((event.key === "u" || event.key === "U") && canUpscale) {
+        event.preventDefault();
+        setShowUpscaleMenu((prev) => !prev);
+      }
+
+      // ? - Show shortcuts panel
+      if (event.key === "?" || (event.shiftKey && event.key === "/")) {
+        event.preventDefault();
+        onShowShortcuts?.();
       }
     };
 
@@ -89,7 +194,7 @@ export function Lightbox({
     return () => {
       document.removeEventListener("keydown", handleKey);
     };
-  }, [onPrev, onNext, onClose, canGoPrev, canGoNext]);
+  }, [onPrev, onNext, onClose, canGoPrev, canGoNext, handleFavoriteClick, isDownloading, onDownload, canUpscale, onShowShortcuts, showUpscaleMenu]);
 
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.stopPropagation();
@@ -211,11 +316,11 @@ export function Lightbox({
       // 4. Convert to Blob and Download
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error("Canvas to Blob failed");
-      
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `comparison-${entry.generationId.slice(0,8)}.png`;
+      a.download = generateSmartFilename(`comparison ${entry.prompt}`, "png");
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -314,24 +419,100 @@ export function Lightbox({
         </div>
 
         {/* Sidebar for Details */}
-        <div className="w-full md:w-[320px] bg-[var(--bg-panel)] p-4 md:p-6 flex flex-col border-l border-[var(--border-subtle)] max-h-[50vh] md:max-h-full">
-           <div className="flex justify-between items-start mb-3 md:mb-6">
-             <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Details</h2>
-              <button
-                type="button"
-                className="rounded-md p-2 -mt-2 -mr-2 text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-subtle)]"
-                onClick={onClose}
-              >
-                 <span className="text-xs font-bold">ESC</span>
-              </button>
+        <div className="w-full md:w-[340px] bg-[var(--bg-panel)] p-4 md:p-6 flex flex-col border-l border-[var(--border-subtle)] max-h-[50vh] md:max-h-full">
+           <div className="flex justify-between items-start mb-3 md:mb-4">
+             <div className="flex flex-col gap-1">
+               <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Details</h2>
+               {totalCount > 1 && (
+                 <span className="text-[10px] font-medium text-[var(--accent-primary)]">
+                   {currentIndex + 1} of {totalCount}
+                 </span>
+               )}
+             </div>
+             <div className="flex items-center gap-2">
+               {transform.scale !== 1 && (
+                 <span className="text-[10px] font-mono text-[var(--text-muted)] bg-[var(--bg-input)] px-2 py-1 rounded">
+                   {zoomPercentage}%
+                 </span>
+               )}
+               {/* Keyboard shortcut hint */}
+               {onShowShortcuts && (
+                 <button
+                   type="button"
+                   className="rounded-md p-1.5 text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-subtle)] transition-colors"
+                   onClick={onShowShortcuts}
+                   title="Keyboard shortcuts (?)"
+                 >
+                   <KeyboardIcon className="h-4 w-4" />
+                 </button>
+               )}
+               <button
+                 type="button"
+                 className="rounded-md p-2 -mt-2 -mr-2 text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-subtle)]"
+                 onClick={onClose}
+               >
+                 <span className="kbd kbd-sm">Esc</span>
+               </button>
+             </div>
            </div>
 
            <div className="flex-1 overflow-y-auto pr-2">
-             <p className="text-sm leading-relaxed text-[var(--text-primary)] font-medium mb-4 max-h-32 overflow-y-auto">
-               {entry.prompt}
-             </p>
-             
-             <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-secondary)] mb-3 md:mb-6">
+             {/* Expanded Prompt Display */}
+             <div className="relative group mb-4">
+               <div className="flex items-start justify-between gap-2 mb-2">
+                 <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Prompt</span>
+                 <div className="flex items-center gap-1">
+                   {/* Favorite Button */}
+                   {onToggleFavorite && (
+                     <button
+                       type="button"
+                       onClick={handleFavoriteClick}
+                       className={`heart-btn p-1.5 rounded-md transition-all ${isFavorite ? "favorited" : "text-[var(--text-muted)] hover:text-[#ff4757]"} ${heartBurst ? "burst animate-heart-pop" : ""}`}
+                       title={isFavorite ? "Remove from favorites (L)" : "Add to favorites (L)"}
+                     >
+                       {isFavorite ? <HeartFilledIcon className="h-4 w-4" /> : <HeartIcon className="h-4 w-4" />}
+                     </button>
+                   )}
+                   {/* Copy Button */}
+                   <button
+                     type="button"
+                     onClick={handleCopyPrompt}
+                     className={`p-1.5 rounded-md transition-all ${copiedPrompt ? "copy-success" : "text-[var(--text-muted)] hover:text-[var(--accent-primary)] hover:bg-[var(--bg-input)]"}`}
+                     title="Copy prompt (C)"
+                   >
+                     {copiedPrompt ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+                   </button>
+                 </div>
+               </div>
+               <div
+                 className={`relative bg-[var(--bg-input)] rounded-lg p-3 border border-[var(--border-subtle)] ${showPromptExpanded ? "" : "cursor-pointer"}`}
+                 onClick={() => !showPromptExpanded && entry.prompt.length > 150 && setShowPromptExpanded(true)}
+               >
+                 <p className={`text-sm leading-relaxed text-[var(--text-primary)] font-medium ${showPromptExpanded ? "max-h-64" : "max-h-24"} overflow-y-auto transition-all duration-300`}>
+                   {entry.prompt}
+                 </p>
+                 {entry.prompt.length > 150 && !showPromptExpanded && (
+                   <button
+                     type="button"
+                     onClick={() => setShowPromptExpanded(true)}
+                     className="absolute bottom-2 right-2 text-[10px] font-semibold text-[var(--accent-primary)] hover:underline"
+                   >
+                     Show more
+                   </button>
+                 )}
+                 {showPromptExpanded && (
+                   <button
+                     type="button"
+                     onClick={() => setShowPromptExpanded(false)}
+                     className="absolute bottom-2 right-2 text-[10px] font-semibold text-[var(--text-muted)] hover:text-white"
+                   >
+                     Show less
+                   </button>
+                 )}
+               </div>
+             </div>
+
+             <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-secondary)] mb-3 md:mb-4">
                 <div className="p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
                   <span className="block text-[10px] uppercase tracking-wide opacity-60 mb-1">Aspect</span>
                   {getAspectDescription(entry.aspect)}
@@ -341,25 +522,104 @@ export function Lightbox({
                   {getQualityLabel(entry.quality)}
                 </div>
              </div>
+
+             {/* Thumbnail Reel */}
+             {allEntries.length > 1 && onNavigateToEntry && (
+               <div className="mb-4">
+                 <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 block">Gallery</span>
+                 <div ref={thumbnailReelRef} className="thumbnail-reel">
+                   {allEntries.map((thumbEntry, idx) => {
+                     const thumbFavoriteId = `${thumbEntry.generationId}:${thumbEntry.imageIndex}`;
+                     const isThumbFavorite = favorites.has(thumbFavoriteId);
+                     const isActive = idx === currentIndex;
+                     return (
+                       <button
+                         key={`${thumbEntry.generationId}-${thumbEntry.imageIndex}`}
+                         type="button"
+                         onClick={() => onNavigateToEntry(thumbEntry)}
+                         className={`thumbnail-item relative ${isActive ? "active" : ""}`}
+                       >
+                         <Image
+                           src={thumbEntry.src}
+                           alt={thumbEntry.prompt}
+                           fill
+                           sizes="64px"
+                           className="object-cover"
+                         />
+                         {isThumbFavorite && (
+                           <HeartFilledIcon className="favorite-badge" />
+                         )}
+                       </button>
+                     );
+                   })}
+                 </div>
+               </div>
+             )}
            </div>
 
-           <div className="mt-auto pt-3 md:pt-6 border-t border-[var(--border-subtle)] space-y-3 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={onDownload}
-                disabled={isDownloading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--accent-primary)] px-4 py-3 text-sm font-bold text-black shadow-lg shadow-sky-900/20 transition-all hover:bg-gray-200 hover:shadow-sky-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isDownloading ? <SpinnerIcon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
-                {isDownloading ? "Saving..." : "Download Image"}
-              </button>
+           <div className="mt-auto pt-3 md:pt-4 border-t border-[var(--border-subtle)] space-y-2 flex flex-col gap-1">
+              {/* Primary Actions Row */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onDownload}
+                  disabled={isDownloading}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--accent-primary)] px-4 py-2.5 text-sm font-bold text-[var(--accent-primary-text)] shadow-[0_0_20px_-5px_rgba(255,215,0,0.3)] transition-all hover:bg-[var(--accent-primary-hover)] hover:shadow-[0_0_28px_-5px_rgba(255,215,0,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isDownloading ? <SpinnerIcon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{isDownloading ? "Saving..." : "Download"}</span>
+                  <span className="kbd kbd-sm ml-1 bg-black/20 border-black/30 text-[var(--accent-primary-text)]">D</span>
+                </button>
+
+                {/* Upscale Button */}
+                {canUpscale && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowUpscaleMenu((prev) => !prev)}
+                      className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-all ${
+                        showUpscaleMenu
+                          ? "bg-[var(--accent-secondary)] border-[var(--accent-secondary)] text-white"
+                          : "bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-white hover:border-[var(--text-muted)]"
+                      }`}
+                      title="Upscale image (U)"
+                    >
+                      <UpscaleIcon className="h-4 w-4" />
+                      <span className="kbd kbd-sm">U</span>
+                    </button>
+                    {showUpscaleMenu && (
+                      <div className="absolute bottom-full right-0 mb-2 bg-[var(--bg-panel)] border border-[var(--border-highlight)] rounded-lg shadow-xl overflow-hidden z-10 min-w-[140px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                        <div className="p-2 border-b border-[var(--border-subtle)]">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Upscale to</span>
+                        </div>
+                        {upscaleOptions.map((targetQuality) => (
+                          <button
+                            key={targetQuality}
+                            type="button"
+                            onClick={() => {
+                              onUpscale?.(targetQuality);
+                              setShowUpscaleMenu(false);
+                            }}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition-colors"
+                          >
+                            <span>{getQualityLabel(targetQuality)}</span>
+                            <span className="text-[10px] text-[var(--text-muted)]">
+                              {targetQuality === "2k" ? "2048px" : "4096px"}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {isCompareMode && hasReferences && (
                   <button
                     type="button"
                     onClick={handleDownloadComparison}
                     disabled={isDownloadingComparison}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--bg-subtle)] border border-[var(--border-subtle)] px-4 py-3 text-sm font-bold text-white shadow-lg transition-all hover:bg-[var(--bg-input)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--bg-subtle)] border border-[var(--border-subtle)] px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:bg-[var(--bg-input)] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isDownloadingComparison ? <SpinnerIcon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
                     {isDownloadingComparison ? "Saving..." : "Save Comparison"}
@@ -371,7 +631,7 @@ export function Lightbox({
                   <button
                     type="button"
                     onClick={() => setIsCompareMode(!isCompareMode)}
-                    className={`flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-3 text-sm font-semibold transition-colors hover:text-white hover:border-[var(--text-muted)] ${
+                    className={`flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2.5 text-sm font-semibold transition-colors hover:text-white hover:border-[var(--text-muted)] ${
                       isCompareMode
                         ? "bg-[var(--bg-subtle)] text-white border-[var(--text-muted)]"
                         : "bg-[var(--bg-input)] text-[var(--text-secondary)]"
@@ -402,17 +662,34 @@ export function Lightbox({
                   ) : null}
                 </div>
               ) : null}
-              
+
               {onEdit ? (
                 <button
                   type="button"
                   onClick={onEdit}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-white hover:border-[var(--text-muted)]"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-2.5 text-sm font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-white hover:border-[var(--text-muted)]"
                 >
                   <PlusIcon className="h-4 w-4" />
                   Use as Reference
                 </button>
               ) : null}
+
+              {/* Keyboard Shortcuts Hint */}
+              <div className="flex items-center justify-center gap-4 pt-2 text-[10px] text-[var(--text-muted)]">
+                <span className="flex items-center gap-1">
+                  <span className="kbd kbd-sm">←</span>
+                  <span className="kbd kbd-sm">→</span>
+                  <span className="ml-1">Navigate</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="kbd kbd-sm">L</span>
+                  <span className="ml-1">Like</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="kbd kbd-sm">?</span>
+                  <span className="ml-1">More</span>
+                </span>
+              </div>
            </div>
         </div>
       </div>

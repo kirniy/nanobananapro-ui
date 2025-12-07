@@ -5,6 +5,7 @@ const DB_NAME = "nano-banana-pro";
 const STORE_NAME = "state";
 const GENERATIONS_KEY = "seedream:generations";
 const PENDING_KEY = "seedream:pending_generations";
+const FAVORITES_KEY = "seedream:favorites";
 
 // Initialize localforage
 const store = typeof window !== "undefined" 
@@ -409,4 +410,40 @@ export async function cleanOrphanedImages(
 
   if (removals.length === 0) return;
   await Promise.allSettled(removals);
+}
+
+/**
+ * Saves the set of favorite image IDs to storage.
+ * Format: "generationId:imageIndex" for each favorited image.
+ */
+export async function persistFavorites(favorites: Set<string>): Promise<void> {
+  if (!store) return;
+  await store.setItem(FAVORITES_KEY, Array.from(favorites));
+}
+
+/**
+ * Loads the set of favorite image IDs from storage.
+ */
+export async function restoreFavorites(): Promise<Set<string>> {
+  if (!store) return new Set();
+
+  const stored = await store.getItem<string[]>(FAVORITES_KEY);
+
+  // Try legacy localStorage if not found
+  if (!stored && typeof window !== "undefined") {
+    const legacy = window.localStorage.getItem(FAVORITES_KEY);
+    if (legacy) {
+      try {
+        const parsed = JSON.parse(legacy);
+        window.localStorage.removeItem(FAVORITES_KEY);
+        if (Array.isArray(parsed)) {
+          return new Set(parsed);
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
+
+  return new Set(Array.isArray(stored) ? stored : []);
 }

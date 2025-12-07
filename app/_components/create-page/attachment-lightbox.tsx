@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { DownloadIcon } from "./icons";
+import { formatFilenameTimestamp } from "./utils";
 
 type AttachmentLightboxProps = {
   attachment: { url: string; name: string; id?: string; width?: number | null; height?: number | null };
@@ -44,7 +45,7 @@ export function AttachmentLightbox({ attachment, onClose }: AttachmentLightboxPr
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
-      link.download = attachment.name || `nano-banana-input-${Date.now()}.png`;
+      link.download = attachment.name || `input-${formatFilenameTimestamp()}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

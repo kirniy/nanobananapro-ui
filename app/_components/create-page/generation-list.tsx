@@ -1,9 +1,10 @@
 import Image from "next/image";
-import { memo } from "react";
+import { memo, useState, useCallback } from "react";
 
 import { type AspectKey } from "../../lib/seedream-options";
 import { GenerationDetailsCard } from "./generation-details-card";
 import { debugLog } from "./logger";
+import { HeartIcon, HeartFilledIcon, CopyIcon, CheckIcon, RefreshIcon } from "./icons";
 import type { Generation } from "./types";
 
 type GenerationGroupProps = {
@@ -17,6 +18,8 @@ type GenerationGroupProps = {
   onPreviewInputImage?: (image: Generation["inputImages"][number]) => void;
   onDeleteGeneration: (generationId: string) => void;
   onRetryGeneration?: (generationId: string) => void;
+  favorites?: Set<string>;
+  onToggleFavorite?: (generationId: string, imageIndex: number) => void;
 };
 
 export const GenerationGroup = memo(function GenerationGroup({
@@ -30,6 +33,8 @@ export const GenerationGroup = memo(function GenerationGroup({
   onPreviewInputImage,
   onDeleteGeneration,
   onRetryGeneration,
+  favorites = new Set(),
+  onToggleFavorite,
 }: GenerationGroupProps) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -53,6 +58,9 @@ export const GenerationGroup = memo(function GenerationGroup({
                   onExpand={onExpand}
                   isInterrupted={isInterrupted}
                   isGenerating={isGenerating}
+                  favorites={favorites}
+                  onToggleFavorite={onToggleFavorite}
+                  onUsePrompt={onUsePrompt}
                 />
               </div>
               <div className="w-full max-w-[180px] lg:w-44 lg:basis-44 lg:flex-none lg:self-start lg:shrink-0 transition-opacity duration-300 lg:opacity-80 lg:group-hover:opacity-100">
@@ -80,6 +88,9 @@ type GenerationGalleryProps = {
   onExpand: (generationId: string, imageIndex: number) => void;
   isInterrupted: boolean;
   isGenerating: boolean;
+  favorites?: Set<string>;
+  onToggleFavorite?: (generationId: string, imageIndex: number) => void;
+  onUsePrompt?: (prompt: string, inputImages: Generation["inputImages"]) => void;
 };
 
 const GenerationGallery = memo(function GenerationGallery({
@@ -87,6 +98,9 @@ const GenerationGallery = memo(function GenerationGallery({
   onExpand,
   isInterrupted,
   isGenerating,
+  favorites = new Set(),
+  onToggleFavorite,
+  onUsePrompt,
 }: GenerationGalleryProps) {
   const layout = resolveGalleryLayout(generation);
 
@@ -102,8 +116,8 @@ const GenerationGallery = memo(function GenerationGallery({
   });
 
   return (
-    <article className="glass-panel w-full rounded-3xl p-1 shadow-2xl transition-all duration-300 hover:shadow-[0_0_30px_-10px_rgba(99,102,241,0.15)]">
-      <div className={`${layout.gridClass} overflow-hidden rounded-[20px] bg-[rgba(0,0,0,0.3)]`}>
+    <article className="w-full rounded-3xl p-1 bg-[var(--bg-panel)] border border-[var(--border-subtle)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5)] transition-all duration-300 hover:shadow-[0_12px_40px_-8px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,215,0,0.1)] hover:border-[var(--border-highlight)]">
+      <div className={`${layout.gridClass} overflow-hidden rounded-[20px] bg-[var(--bg-app)]`}>
         {generation.images.map((src, index) => (
           <ImageTile
             key={`${generation.id}-${index}`}
@@ -116,6 +130,10 @@ const GenerationGallery = memo(function GenerationGallery({
             size={generation.size}
             isInterrupted={isInterrupted}
             isGenerating={isGenerating}
+            isFavorite={favorites.has(`${generation.id}:${index}`)}
+            onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(generation.id, index) : undefined}
+            onCopyPrompt={() => navigator.clipboard.writeText(generation.prompt)}
+            onReuse={onUsePrompt ? () => onUsePrompt(generation.prompt, generation.inputImages || []) : undefined}
           />
         ))}
       </div>
@@ -133,6 +151,10 @@ type ImageTileProps = {
   size: { width: number; height: number };
   isInterrupted: boolean;
   isGenerating: boolean;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
+  onCopyPrompt?: () => void;
+  onReuse?: () => void;
 };
 
 const ImageTile = memo(function ImageTile({
@@ -145,7 +167,29 @@ const ImageTile = memo(function ImageTile({
   size,
   isInterrupted,
   isGenerating,
+  isFavorite = false,
+  onToggleFavorite,
+  onCopyPrompt,
+  onReuse,
 }: ImageTileProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [heartBurst, setHeartBurst] = useState(false);
+
+  const handleCopyPrompt = useCallback(() => {
+    onCopyPrompt?.();
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 2000);
+  }, [onCopyPrompt]);
+
+  const handleFavoriteClick = useCallback(() => {
+    if (!isFavorite) {
+      setHeartBurst(true);
+      setTimeout(() => setHeartBurst(false), 400);
+    }
+    onToggleFavorite?.();
+  }, [onToggleFavorite, isFavorite]);
+
   const width = Math.max(size?.width ?? 1024, 256);
   const height = Math.max(size?.height ?? 1024, 256);
   const maxDimension = Math.max(width, height);
@@ -160,8 +204,8 @@ const ImageTile = memo(function ImageTile({
 
   if (!src) {
     const interruptedStyles = isInterrupted
-      ? "bg-[#1f1f1f] border border-red-700/60 text-red-300"
-      : "animate-pulse bg-[#1f1f1f] border border-[#333]";
+      ? "bg-[var(--bg-input)] border border-[var(--color-error)]/40 text-[var(--color-error)]"
+      : "animate-pulse bg-[var(--bg-input)] border border-[var(--border-subtle)]";
 
     return (
       <div className={`${className} relative ${interruptedStyles}`}>
@@ -195,46 +239,109 @@ const ImageTile = memo(function ImageTile({
   }
 
   return (
-    <button
-      type="button"
-      onClick={onExpand}
-      className={`${className} bg-[#0f1017] transition-all duration-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#6366f1]/50 cursor-pointer overflow-hidden group/tile`}
-      aria-label="Expand image"
+    <div
+      className={`${className} relative`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <Image
-        src={src}
-        alt={prompt}
-        width={width}
-        height={height}
-        draggable={false}
-        sizes="(max-width: 640px) calc((100vw - 2.5rem) / 2), (max-width: 1024px) calc((100vw - 4rem) / 2), calc((min(1400px, 100vw) - 4rem) / 4)"
-        unoptimized={shouldBypassOptimization}
-        loading={shouldBypassOptimization ? "eager" : "lazy"}
-        className="h-full w-full object-cover select-none transition-transform duration-500 group-hover/tile:scale-105"
-        onLoad={({ currentTarget }) => {
-          debugLog("gallery:image-loaded", {
-            generationId,
-            imageIndex,
-            naturalWidth: currentTarget.naturalWidth,
-            naturalHeight: currentTarget.naturalHeight,
-            renderedWidth: currentTarget.width,
-            renderedHeight: currentTarget.height,
-            devicePixelRatio: typeof window !== "undefined" ? window.devicePixelRatio : null,
-            requestedWidth: width,
-            requestedHeight: height,
-            desiredPixelWidth,
-            maxDimension,
-            shouldBypassOptimization,
-          });
-        }}
-        style={{
-          transform: "translateZ(0)",
-          backfaceVisibility: "hidden",
-          filter: devicePixelRatio > 1 ? "none" : undefined,
-        }}
-      />
-      <div className="absolute inset-0 bg-black/0 transition-colors group-hover/tile:bg-black/10" />
-    </button>
+      <button
+        type="button"
+        onClick={onExpand}
+        className="absolute inset-0 bg-[var(--bg-app)] transition-all duration-300 hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/50 cursor-pointer overflow-hidden group/tile"
+        aria-label="Expand image"
+      >
+        <Image
+          src={src}
+          alt={prompt}
+          width={width}
+          height={height}
+          draggable={false}
+          sizes="(max-width: 640px) calc((100vw - 2.5rem) / 2), (max-width: 1024px) calc((100vw - 4rem) / 2), calc((min(1400px, 100vw) - 4rem) / 4)"
+          unoptimized={shouldBypassOptimization}
+          loading={shouldBypassOptimization ? "eager" : "lazy"}
+          className="h-full w-full object-cover select-none transition-transform duration-500 group-hover/tile:scale-105"
+          onLoad={({ currentTarget }) => {
+            debugLog("gallery:image-loaded", {
+              generationId,
+              imageIndex,
+              naturalWidth: currentTarget.naturalWidth,
+              naturalHeight: currentTarget.naturalHeight,
+              renderedWidth: currentTarget.width,
+              renderedHeight: currentTarget.height,
+              devicePixelRatio: typeof window !== "undefined" ? window.devicePixelRatio : null,
+              requestedWidth: width,
+              requestedHeight: height,
+              desiredPixelWidth,
+              maxDimension,
+              shouldBypassOptimization,
+            });
+          }}
+          style={{
+            transform: "translateZ(0)",
+            backfaceVisibility: "hidden",
+            filter: devicePixelRatio > 1 ? "none" : undefined,
+          }}
+        />
+        <div className="absolute inset-0 bg-black/0 transition-colors group-hover/tile:bg-black/10" />
+      </button>
+
+      {/* Favorite Badge - Always visible when favorited */}
+      {isFavorite && (
+        <div className="absolute top-2 right-2 z-10 pointer-events-none">
+          <HeartFilledIcon className="h-5 w-5 text-[#ff4757] drop-shadow-lg" />
+        </div>
+      )}
+
+      {/* Quick Actions Overlay */}
+      {onToggleFavorite && (
+        <div className={`quick-actions-overlay ${isHovered ? "visible" : ""}`}>
+          <div className="quick-actions-bar">
+            {/* Favorite Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleFavoriteClick();
+              }}
+              className={`quick-action-btn ${isFavorite ? "favorited" : ""} ${heartBurst ? "animate-heart-pop" : ""}`}
+              title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+            >
+              {isFavorite ? <HeartFilledIcon className="h-4 w-4" /> : <HeartIcon className="h-4 w-4" />}
+            </button>
+
+            {/* Copy Prompt Button */}
+            {onCopyPrompt && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyPrompt();
+                }}
+                className={`quick-action-btn ${copiedPrompt ? "text-[var(--color-success)]" : ""}`}
+                title="Copy prompt"
+              >
+                {copiedPrompt ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+              </button>
+            )}
+
+            {/* Reuse Prompt Button */}
+            {onReuse && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReuse();
+                }}
+                className="quick-action-btn"
+                title="Reuse this prompt"
+              >
+                <RefreshIcon className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 });
 

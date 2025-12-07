@@ -274,6 +274,14 @@ export function Header({
                     className="flex-1 resize-none overflow-y-auto max-h-40 bg-transparent text-base md:text-lg leading-[1.6] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none font-medium"
                     placeholder="What are you imagining?"
                 />
+                 {/* Character count */}
+                 {prompt.length > 0 && (
+                   <span className={`absolute bottom-2 right-14 text-[10px] font-mono transition-colors ${
+                     prompt.length > 2000 ? 'text-[var(--color-warning)]' : 'text-[var(--text-muted)]'
+                   }`}>
+                     {prompt.length.toLocaleString()}
+                   </span>
+                 )}
                  <button
                     type="button"
                     aria-label="Add reference image"
@@ -399,7 +407,7 @@ export function Header({
                  <button
                     type="submit"
                     disabled={generateDisabled}
-                    className="group relative flex items-center gap-2 rounded-xl bg-white px-6 py-2 text-sm font-bold text-black shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] transition-all hover:scale-[1.02] hover:shadow-[0_0_25px_-5px_rgba(255,255,255,0.5)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:grayscale"
+                    className="group relative flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-6 py-2.5 text-sm font-bold text-[var(--accent-primary-text)] shadow-[0_0_24px_-6px_rgba(255,215,0,0.4)] transition-all hover:scale-[1.02] hover:bg-[var(--accent-primary-hover)] hover:shadow-[0_0_32px_-6px_rgba(255,215,0,0.6)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:grayscale"
                  >
                      <LightningIcon className="h-4 w-4" />
                      <span>{isBudgetLocked ? "Limit Reached" : "Generate"}</span>
