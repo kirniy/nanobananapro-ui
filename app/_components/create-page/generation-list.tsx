@@ -238,52 +238,59 @@ const ImageTile = memo(function ImageTile({
     );
   }
 
+  const handleTileClick = useCallback((e: React.MouseEvent) => {
+    // Only expand if we clicked on the image itself, not on action buttons
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-action-bar]')) {
+      return;
+    }
+    onExpand();
+  }, [onExpand]);
+
   return (
     <div
-      className={`${className} relative`}
+      role="button"
+      tabIndex={0}
+      onClick={handleTileClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onExpand(); }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      className={`${className} relative bg-[var(--bg-app)] transition-all duration-300 hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/50 cursor-pointer overflow-hidden group/tile`}
+      aria-label="Expand image"
     >
-      <button
-        type="button"
-        onClick={onExpand}
-        className="absolute inset-0 bg-[var(--bg-app)] transition-all duration-300 hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/50 cursor-pointer overflow-hidden group/tile"
-        aria-label="Expand image"
-      >
-        <Image
-          src={src}
-          alt={prompt}
-          width={width}
-          height={height}
-          draggable={false}
-          sizes="(max-width: 640px) calc((100vw - 2.5rem) / 2), (max-width: 1024px) calc((100vw - 4rem) / 2), calc((min(1400px, 100vw) - 4rem) / 4)"
-          unoptimized={shouldBypassOptimization}
-          loading={shouldBypassOptimization ? "eager" : "lazy"}
-          className="h-full w-full object-cover select-none transition-transform duration-500 group-hover/tile:scale-105"
-          onLoad={({ currentTarget }) => {
-            debugLog("gallery:image-loaded", {
-              generationId,
-              imageIndex,
-              naturalWidth: currentTarget.naturalWidth,
-              naturalHeight: currentTarget.naturalHeight,
-              renderedWidth: currentTarget.width,
-              renderedHeight: currentTarget.height,
-              devicePixelRatio: typeof window !== "undefined" ? window.devicePixelRatio : null,
-              requestedWidth: width,
-              requestedHeight: height,
-              desiredPixelWidth,
-              maxDimension,
-              shouldBypassOptimization,
-            });
-          }}
-          style={{
-            transform: "translateZ(0)",
-            backfaceVisibility: "hidden",
-            filter: devicePixelRatio > 1 ? "none" : undefined,
-          }}
-        />
-        <div className="absolute inset-0 bg-black/0 transition-colors group-hover/tile:bg-black/10" />
-      </button>
+      <Image
+        src={src}
+        alt={prompt}
+        width={width}
+        height={height}
+        draggable={false}
+        sizes="(max-width: 640px) calc((100vw - 2.5rem) / 2), (max-width: 1024px) calc((100vw - 4rem) / 2), calc((min(1400px, 100vw) - 4rem) / 4)"
+        unoptimized={shouldBypassOptimization}
+        loading={shouldBypassOptimization ? "eager" : "lazy"}
+        className="h-full w-full object-cover select-none transition-transform duration-500 group-hover/tile:scale-105"
+        onLoad={({ currentTarget }) => {
+          debugLog("gallery:image-loaded", {
+            generationId,
+            imageIndex,
+            naturalWidth: currentTarget.naturalWidth,
+            naturalHeight: currentTarget.naturalHeight,
+            renderedWidth: currentTarget.width,
+            renderedHeight: currentTarget.height,
+            devicePixelRatio: typeof window !== "undefined" ? window.devicePixelRatio : null,
+            requestedWidth: width,
+            requestedHeight: height,
+            desiredPixelWidth,
+            maxDimension,
+            shouldBypassOptimization,
+          });
+        }}
+        style={{
+          transform: "translateZ(0)",
+          backfaceVisibility: "hidden",
+          filter: devicePixelRatio > 1 ? "none" : undefined,
+        }}
+      />
+      <div className="absolute inset-0 bg-black/0 transition-colors group-hover/tile:bg-black/10 pointer-events-none" />
 
       {/* Favorite Badge - Always visible when favorited */}
       {isFavorite && (
@@ -294,16 +301,16 @@ const ImageTile = memo(function ImageTile({
 
       {/* Quick Actions Overlay */}
       {onToggleFavorite && (
-        <div className={`quick-actions-overlay ${isHovered ? "visible" : ""}`}>
-          <div className="quick-actions-bar">
+        <div className={`absolute inset-0 pointer-events-none transition-opacity duration-200 ${isHovered ? "opacity-100" : "opacity-0"}`}>
+          {/* Gradient overlay for visibility */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+          {/* Action buttons */}
+          <div data-action-bar className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 p-1 bg-black/60 backdrop-blur-sm rounded-lg border border-white/10 pointer-events-auto">
             {/* Favorite Button */}
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleFavoriteClick();
-              }}
-              className={`quick-action-btn ${isFavorite ? "favorited" : ""} ${heartBurst ? "animate-heart-pop" : ""}`}
+              onClick={handleFavoriteClick}
+              className={`flex items-center justify-center w-8 h-8 rounded-md transition-all ${isFavorite ? "text-[#ff4757]" : "text-white/80 hover:text-white hover:bg-white/15"} ${heartBurst ? "animate-heart-pop" : ""}`}
               title={isFavorite ? "Remove from favorites" : "Add to favorites"}
             >
               {isFavorite ? <HeartFilledIcon className="h-4 w-4" /> : <HeartIcon className="h-4 w-4" />}
@@ -313,11 +320,8 @@ const ImageTile = memo(function ImageTile({
             {onCopyPrompt && (
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCopyPrompt();
-                }}
-                className={`quick-action-btn ${copiedPrompt ? "text-[var(--color-success)]" : ""}`}
+                onClick={handleCopyPrompt}
+                className={`flex items-center justify-center w-8 h-8 rounded-md transition-all ${copiedPrompt ? "text-[var(--color-success)]" : "text-white/80 hover:text-white hover:bg-white/15"}`}
                 title="Copy prompt"
               >
                 {copiedPrompt ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
@@ -328,11 +332,8 @@ const ImageTile = memo(function ImageTile({
             {onReuse && (
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReuse();
-                }}
-                className="quick-action-btn"
+                onClick={onReuse}
+                className="flex items-center justify-center w-8 h-8 rounded-md text-white/80 hover:text-white hover:bg-white/15 transition-all"
                 title="Reuse this prompt"
               >
                 <RefreshIcon className="h-4 w-4" />
