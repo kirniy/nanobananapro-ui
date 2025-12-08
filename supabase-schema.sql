@@ -107,3 +107,111 @@ CREATE TRIGGER update_user_settings_updated_at
   BEFORE UPDATE ON user_settings
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+-- Prompts table
+CREATE TABLE IF NOT EXISTS prompts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  content TEXT NOT NULL,
+  tags TEXT[] DEFAULT '{}',
+  category_id UUID,
+  is_favorite BOOLEAN DEFAULT FALSE,
+  order_index INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Categories table
+CREATE TABLE IF NOT EXISTS prompt_categories (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  color TEXT,
+  order_index INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Attachments table (for reference images or results)
+CREATE TABLE IF NOT EXISTS prompt_attachments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  prompt_id UUID NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  type TEXT NOT NULL,
+  name TEXT,
+  width INTEGER,
+  height INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Add indexes
+CREATE INDEX IF NOT EXISTS idx_prompts_user_id ON prompts(user_id);
+CREATE INDEX IF NOT EXISTS idx_prompts_category_id ON prompts(category_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_categories_user_id ON prompt_categories(user_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_attachments_prompt_id ON prompt_attachments(prompt_id);
+
+-- RLS Policies for Prompts
+ALTER TABLE prompts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own prompts"
+  ON prompts FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own prompts"
+  ON prompts FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own prompts"
+  ON prompts FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own prompts"
+  ON prompts FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- RLS Policies for Categories
+ALTER TABLE prompt_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own categories"
+  ON prompt_categories FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own categories"
+  ON prompt_categories FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own categories"
+  ON prompt_categories FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own categories"
+  ON prompt_categories FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- RLS Policies for Attachments
+ALTER TABLE prompt_attachments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own attachments"
+  ON prompt_attachments FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own attachments"
+  ON prompt_attachments FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own attachments"
+  ON prompt_attachments FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own attachments"
+  ON prompt_attachments FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Trigger for prompts updated_at
+CREATE TRIGGER update_prompts_updated_at
+  BEFORE UPDATE ON prompts
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+

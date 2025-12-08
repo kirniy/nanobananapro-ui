@@ -30,46 +30,90 @@ export function useCloudSync({
   const { user } = useAuth();
   const prevUserIdRef = useRef<string | null>(null);
   const syncInProgressRef = useRef(false);
+  const initialSyncDoneRef = useRef(false);
   const lastSyncedGenerationsRef = useRef<string>("");
   const lastSyncedFavoritesRef = useRef<string>("");
 
-  // Load data from cloud when user signs in
+  // Load data from cloud AND upload local data when user signs in
   useEffect(() => {
     const currentUserId = user?.id ?? null;
     const previousUserId = prevUserIdRef.current;
 
     // User just signed in
-    if (currentUserId && !previousUserId) {
-      const loadFromCloud = async () => {
+    if (currentUserId && !previousUserId && !initialSyncDoneRef.current) {
+      const syncWithCloud = async () => {
+        syncInProgressRef.current = true;
         try {
+          // First, load what's in the cloud
           const [cloudGenerations, cloudFavorites] = await Promise.all([
             loadGenerationsFromCloud(),
             loadFavoritesFromCloud(),
           ]);
 
+          // Get IDs of what's already in cloud
+          const cloudGenIds = new Set(cloudGenerations.map(g => g.id));
+          const cloudFavIds = cloudFavorites;
+
+          // Find local items that aren't in cloud yet
+          const localOnlyGenerations = generations.filter(g => !cloudGenIds.has(g.id));
+          const localOnlyFavorites = new Set(
+            Array.from(favorites).filter(f => !cloudFavIds.has(f))
+          );
+
+          // Upload local-only items to cloud
+          if (localOnlyGenerations.length > 0) {
+            console.log(`Uploading ${localOnlyGenerations.length} local generations to cloud...`);
+            await saveGenerationsToCloud(localOnlyGenerations);
+          }
+
+          if (localOnlyFavorites.size > 0) {
+            console.log(`Uploading ${localOnlyFavorites.size} local favorites to cloud...`);
+            // Merge and save all favorites
+            const mergedFavorites = new Set([...cloudFavorites, ...favorites]);
+            await saveFavoritesToCloud(mergedFavorites);
+          }
+
+          // Merge cloud data into local state
           if (cloudGenerations.length > 0) {
             onGenerationsLoaded(cloudGenerations);
-            lastSyncedGenerationsRef.current = JSON.stringify(cloudGenerations.map(g => g.id).sort());
           }
 
           if (cloudFavorites.size > 0) {
             onFavoritesLoaded(cloudFavorites);
-            lastSyncedFavoritesRef.current = JSON.stringify(Array.from(cloudFavorites).sort());
           }
+
+          // Update sync refs to prevent re-uploading
+          const allGenerationIds = [...new Set([...cloudGenerations.map(g => g.id), ...generations.map(g => g.id)])];
+          lastSyncedGenerationsRef.current = JSON.stringify(allGenerationIds.sort());
+
+          const allFavoriteIds = [...new Set([...cloudFavorites, ...favorites])];
+          lastSyncedFavoritesRef.current = JSON.stringify(allFavoriteIds.sort());
+
+          initialSyncDoneRef.current = true;
+          console.log("Cloud sync complete!");
         } catch (error) {
-          console.error("Failed to load data from cloud:", error);
+          console.error("Failed to sync with cloud:", error);
+        } finally {
+          syncInProgressRef.current = false;
         }
       };
 
-      loadFromCloud();
+      syncWithCloud();
+    }
+
+    // User signed out - reset initial sync flag
+    if (!currentUserId && previousUserId) {
+      initialSyncDoneRef.current = false;
+      lastSyncedGenerationsRef.current = "";
+      lastSyncedFavoritesRef.current = "";
     }
 
     prevUserIdRef.current = currentUserId;
-  }, [user, onGenerationsLoaded, onFavoritesLoaded]);
+  }, [user, generations, favorites, onGenerationsLoaded, onFavoritesLoaded]);
 
-  // Sync generations to cloud when they change
+  // Sync generations to cloud when they change (after initial sync)
   useEffect(() => {
-    if (!user || syncInProgressRef.current) return;
+    if (!user || syncInProgressRef.current || !initialSyncDoneRef.current) return;
 
     const currentGenerationsKey = JSON.stringify(generations.map(g => g.id).sort());
     if (currentGenerationsKey === lastSyncedGenerationsRef.current) return;
@@ -91,9 +135,9 @@ export function useCloudSync({
     return () => clearTimeout(timeoutId);
   }, [user, generations]);
 
-  // Sync favorites to cloud when they change
+  // Sync favorites to cloud when they change (after initial sync)
   useEffect(() => {
-    if (!user) return;
+    if (!user || !initialSyncDoneRef.current) return;
 
     const currentFavoritesKey = JSON.stringify(Array.from(favorites).sort());
     if (currentFavoritesKey === lastSyncedFavoritesRef.current) return;

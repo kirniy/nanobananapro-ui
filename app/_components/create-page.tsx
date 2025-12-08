@@ -18,6 +18,7 @@ import { clearPending, loadPending, restoreGenerations, persistGenerations, save
 import { generateSmartFilename } from "./create-page/utils";
 import { KeyboardShortcutsPanel } from "./create-page/keyboard-shortcuts-panel";
 import { UserMenu } from "./auth/user-menu";
+import { useCloudSync } from "./create-page/use-cloud-sync";
 
 const defaultPrompt =
   "Cinematic shot of a futuristic city at night, neon lights, rain reflections, highly detailed, 8k resolution";
@@ -203,6 +204,27 @@ export function CreatePage() {
   }, [setError]);
 
   const isAttachmentLimitReached = attachments.length >= MAX_ATTACHMENTS;
+
+  // Cloud sync - syncs generations and favorites to Supabase when user is authenticated
+  const { deleteFromCloud } = useCloudSync({
+    generations,
+    favorites,
+    onGenerationsLoaded: useCallback((cloudGenerations: Generation[]) => {
+      setGenerations((local) => {
+        // Merge cloud and local, preferring cloud for duplicates
+        const cloudIds = new Set(cloudGenerations.map(g => g.id));
+        const localOnly = local.filter(g => !cloudIds.has(g.id));
+        // Sort by date, newest first
+        const merged = [...cloudGenerations, ...localOnly].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        return merged;
+      });
+    }, []),
+    onFavoritesLoaded: useCallback((cloudFavorites: Set<string>) => {
+      setFavorites((local) => new Set([...local, ...cloudFavorites]));
+    }, []),
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -990,6 +1012,7 @@ export function CreatePage() {
         pendingGenerations.find((generation) => generation.id === generationId);
 
       void deleteGenerationData(generationId, generationToDelete);
+      void deleteFromCloud(generationId); // Also delete from Supabase
 
       setGenerations((previous) => previous.filter((generation) => generation.id !== generationId));
       setPendingGenerations((previous) => previous.filter((generation) => generation.id !== generationId));
@@ -1001,7 +1024,7 @@ export function CreatePage() {
         setError(null);
       }
     },
-    [displayFeed, error, generations, pendingGenerations, setError, setLightboxSelection],
+    [deleteFromCloud, displayFeed, error, generations, pendingGenerations, setError, setLightboxSelection],
   );
 
   const handleToggleFavorite = useCallback(
