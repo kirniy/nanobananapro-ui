@@ -141,6 +141,7 @@ const GenerationGallery = memo(function GenerationGallery({
             onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(generation.id, index) : undefined}
             onCopyPrompt={() => navigator.clipboard.writeText(generation.prompt)}
             onReuse={onUsePrompt ? () => onUsePrompt(generation.prompt, generation.inputImages || []) : undefined}
+            onSaveToPrompts={onSaveToPrompts ? () => onSaveToPrompts(generation.prompt, generation.inputImages?.map(img => ({ url: img.url, type: "image", name: img.name || "reference.png" }))) : undefined}
             outputFormat={generation.outputFormat || "png"}
           />
         ))}
@@ -163,6 +164,7 @@ type ImageTileProps = {
   onToggleFavorite?: () => void;
   onCopyPrompt?: () => void;
   onReuse?: () => void;
+  onSaveToPrompts?: () => void;
   outputFormat?: string;
 };
 
@@ -180,6 +182,7 @@ const ImageTile = memo(function ImageTile({
   onToggleFavorite,
   onCopyPrompt,
   onReuse,
+  onSaveToPrompts,
   outputFormat = "png",
 }: ImageTileProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -371,6 +374,20 @@ const ImageTile = memo(function ImageTile({
                 title="Reuse this prompt"
               >
                 <RefreshIcon className="h-4 w-4" />
+              </button>
+            )}
+
+            {/* Save to Prompts Button */}
+            {onSaveToPrompts && (
+              <button
+                type="button"
+                onClick={onSaveToPrompts}
+                className="flex items-center justify-center w-8 h-8 rounded-md text-white/80 hover:text-white hover:bg-white/15 transition-all"
+                title="Save to Prompts"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                </svg>
               </button>
             )}
 

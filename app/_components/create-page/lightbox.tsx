@@ -80,7 +80,7 @@ export function Lightbox({
   const upscaleOptions = UPSCALE_OPTIONS[entry.quality as QualityKey] || [];
   const canUpscale = upscaleOptions.length > 0 && onUpscale;
 
-  const handleCopyPrompt = async () => {
+  const handleCopyPrompt = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(entry.prompt);
       setCopiedPrompt(true);
@@ -88,7 +88,7 @@ export function Lightbox({
     } catch (error) {
       console.error("Failed to copy prompt", error);
     }
-  };
+  }, [entry.prompt]);
 
   const handleFavoriteClick = useCallback(() => {
     if (!onToggleFavorite) return;
@@ -196,7 +196,7 @@ export function Lightbox({
     return () => {
       document.removeEventListener("keydown", handleKey);
     };
-  }, [onPrev, onNext, onClose, canGoPrev, canGoNext, handleFavoriteClick, isDownloading, onDownload, canUpscale, onShowShortcuts, showUpscaleMenu]);
+  }, [onPrev, onNext, onClose, canGoPrev, canGoNext, handleFavoriteClick, isDownloading, onDownload, canUpscale, onShowShortcuts, showUpscaleMenu, handleCopyPrompt]);
 
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.stopPropagation();

@@ -1158,6 +1158,38 @@ export function CreatePage() {
     [clearAttachmentError],
   );
 
+  const { createPrompt, categories } = usePrompts();
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<Prompt | undefined>(undefined);
+
+  const handleSaveToPrompts = useCallback((content: string, attachments?: { url: string; type: "image"; name: string }[]) => {
+    setEditingPrompt({
+      id: "", // New prompt
+      title: "",
+      content,
+      description: null,
+      tags: [],
+      category_id: null,
+      is_favorite: false,
+      order_index: 0,
+      user_id: "",
+      created_at: "",
+      updated_at: "",
+      attachments: attachments?.map(a => ({
+        id: "",
+        prompt_id: "",
+        user_id: "",
+        url: a.url,
+        type: "image",
+        name: a.name,
+        width: null,
+        height: null,
+        created_at: ""
+      }))
+    });
+    setIsEditorOpen(true);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
       <div
@@ -1243,6 +1275,7 @@ export function CreatePage() {
                   onRetryGeneration={handleRetryGeneration}
                   favorites={favorites}
                   onToggleFavorite={handleToggleFavorite}
+                  onSaveToPrompts={handleSaveToPrompts}
                 />
               ))
             ) : (
@@ -1256,6 +1289,7 @@ export function CreatePage() {
             favorites={favorites}
             onToggleFavorite={handleToggleFavorite}
             onUsePrompt={handleUsePrompt}
+            onSaveToPrompts={handleSaveToPrompts}
           />
         ) : (
           <PromptsView
@@ -1328,11 +1362,23 @@ export function CreatePage() {
           allEntries={galleryEntries}
           onNavigateToEntry={(entry) => setLightboxSelection({ generationId: entry.generationId, imageIndex: entry.imageIndex })}
           favorites={favorites}
+          onSaveToPrompts={handleSaveToPrompts}
         />
       ) : null}
       {showShortcutsPanel && (
         <KeyboardShortcutsPanel onClose={() => setShowShortcutsPanel(false)} />
       )}
+
+      <PromptEditor
+        isOpen={isEditorOpen}
+        onClose={() => setIsEditorOpen(false)}
+        initialData={editingPrompt}
+        categories={categories}
+        onSave={async (data) => {
+          await createPrompt(data);
+          setIsEditorOpen(false);
+        }}
+      />
     </div>
   );
 }
