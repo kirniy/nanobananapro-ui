@@ -218,14 +218,22 @@ export function CreatePage() {
     favorites,
     onGenerationsLoaded: useCallback((cloudGenerations: Generation[]) => {
       setGenerations((local) => {
-        // Merge cloud and local, preferring cloud for duplicates
-        const cloudIds = new Set(cloudGenerations.map(g => g.id));
-        const localOnly = local.filter(g => !cloudIds.has(g.id));
-        // Sort by date, newest first
-        const merged = [...cloudGenerations, ...localOnly].sort(
+        // Local is source of truth - only add cloud items that don't exist locally
+        // This ensures local blob URLs are never replaced by cloud data
+        const localIds = new Set(local.map(g => g.id));
+
+        // Only add generations from cloud that we don't have locally
+        const cloudOnly = cloudGenerations.filter(g => !localIds.has(g.id));
+
+        if (cloudOnly.length === 0) {
+          // No new data from cloud, keep local unchanged
+          return local;
+        }
+
+        // Add cloud-only items to local, sort by date
+        return [...local, ...cloudOnly].sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
-        return merged;
       });
     }, []),
     onFavoritesLoaded: useCallback((cloudFavorites: Set<string>) => {

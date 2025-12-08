@@ -18,7 +18,6 @@ type UseCloudSyncOptions = {
   favorites: Set<string>;
   onGenerationsLoaded: (generations: Generation[]) => void;
   onFavoritesLoaded: (favorites: Set<string>) => void;
-  onGenerationsUpdated?: (generations: Generation[]) => void;
 };
 
 const SYNC_IMAGES_KEY = "nano-banana-sync-images";
@@ -31,7 +30,6 @@ export function useCloudSync({
   favorites,
   onGenerationsLoaded,
   onFavoritesLoaded,
-  onGenerationsUpdated,
 }: UseCloudSyncOptions) {
   const { user } = useAuth();
   const prevUserIdRef = useRef<string | null>(null);
@@ -98,17 +96,17 @@ export function useCloudSync({
             await saveFavoritesToCloud(mergedFavorites);
           }
 
-          // Reload from cloud to get updated URLs (after uploading local images, URLs change to Supabase URLs)
-          // This ensures local state has the permanent cloud URLs instead of blob URLs
-          const updatedCloudGenerations = localOnlyGenerations.length > 0 && syncImages
-            ? await loadGenerationsFromCloud()
-            : cloudGenerations;
+          // Only load cloud data that doesn't exist locally
+          // Local data is the source of truth - cloud is just for backup/sync
+          // Only add items from cloud that we don't have locally (e.g., from another device)
+          const localIds = new Set(generations.map(g => g.id));
+          const cloudOnlyGenerations = cloudGenerations.filter(g => !localIds.has(g.id));
 
-          // Merge cloud data into local state
-          if (updatedCloudGenerations.length > 0) {
-            onGenerationsLoaded(updatedCloudGenerations);
+          if (cloudOnlyGenerations.length > 0) {
+            onGenerationsLoaded(cloudOnlyGenerations);
           }
 
+          // Merge favorites (additive only)
           if (cloudFavorites.size > 0) {
             onFavoritesLoaded(cloudFavorites);
           }
@@ -158,14 +156,8 @@ export function useCloudSync({
 
         if (newGenerations.length > 0) {
           // Upload new generations with images (if enabled)
+          // Local data remains source of truth - we only upload, never replace local state
           await saveGenerationsWithImages(newGenerations, syncImages);
-
-          // If images were uploaded, the URLs might have changed - update local state
-          if (syncImages && onGenerationsUpdated) {
-            // Reload from cloud to get updated URLs
-            const updatedGenerations = await loadGenerationsFromCloud();
-            onGenerationsUpdated(updatedGenerations);
-          }
         }
 
         lastSyncedGenerationsRef.current = currentGenerationsKey;
@@ -179,7 +171,7 @@ export function useCloudSync({
     // Debounce sync
     const timeoutId = setTimeout(syncGenerations, 2000);
     return () => clearTimeout(timeoutId);
-  }, [user, generations, syncImages, onGenerationsUpdated]);
+  }, [user, generations, syncImages]);
 
   // Sync favorites to cloud when they change (after initial sync)
   useEffect(() => {
