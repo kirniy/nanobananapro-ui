@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AccessGuard } from "./_components/access-guard";
+import { AuthProvider } from "./_components/auth/auth-context";
 
 // Display font for headings and branding
 const dmSans = DM_Sans({
@@ -45,7 +46,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${dmSans.variable} ${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="antialiased">
-        <AccessGuard protectionEnabled={accessProtectionEnabled}>{children}</AccessGuard>
+        <AuthProvider>
+          <AccessGuard protectionEnabled={accessProtectionEnabled}>{children}</AccessGuard>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -17,6 +17,7 @@ import type { GalleryEntry, Generation, PromptAttachment } from "./create-page/t
 import { clearPending, loadPending, restoreGenerations, persistGenerations, savePending, deleteGenerationData, cleanOrphanedImages, persistFavorites, restoreFavorites } from "./create-page/storage";
 import { generateSmartFilename } from "./create-page/utils";
 import { KeyboardShortcutsPanel } from "./create-page/keyboard-shortcuts-panel";
+import { UserMenu } from "./auth/user-menu";
 
 const defaultPrompt =
   "Cinematic shot of a futuristic city at night, neon lights, rain reflections, highly detailed, 8k resolution";
@@ -1157,7 +1158,8 @@ export function CreatePage() {
       <div className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-8 px-6 pb-48 pt-10 lg:px-10">
         
         {/* Navigation Tabs */}
-        <div className="pointer-events-none sticky top-4 z-30 flex justify-center">
+        <div className="pointer-events-none sticky top-4 z-30 flex items-center justify-between">
+          <div className="w-24" /> {/* Spacer for centering */}
           <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-[var(--bg-subtle)] p-1 border border-[var(--border-subtle)] shadow-lg shadow-black/20">
             <button
               onClick={() => setView("create")}
@@ -1179,6 +1181,9 @@ export function CreatePage() {
             >
               Gallery
             </button>
+          </div>
+          <div className="pointer-events-auto w-24 flex justify-end">
+            <UserMenu />
           </div>
         </div>
 
