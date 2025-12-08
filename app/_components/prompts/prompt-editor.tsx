@@ -9,9 +9,10 @@ type PromptEditorProps = {
     initialData?: Prompt;
     categories: PromptCategory[];
     onSave: (data: CreatePromptInput) => Promise<void>;
+    onManageCategories?: () => void;
 };
 
-export function PromptEditor({ isOpen, onClose, initialData, categories, onSave }: PromptEditorProps) {
+export function PromptEditor({ isOpen, onClose, initialData, categories, onSave, onManageCategories }: PromptEditorProps) {
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
     const [description, setDescription] = useState("");
@@ -149,17 +150,29 @@ export function PromptEditor({ isOpen, onClose, initialData, categories, onSave 
 
                         <div className="grid gap-2">
                             <label htmlFor="category" className="text-sm font-medium text-[var(--text-secondary)]">Category</label>
-                            <select
-                                id="category"
-                                value={categoryId}
-                                onChange={(e) => setCategoryId(e.target.value)}
-                                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--text-primary)] focus:outline-none"
-                            >
-                                <option value="">No Category</option>
-                                {categories.map((cat) => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                ))}
-                            </select>
+                            <div className="flex gap-2">
+                                <select
+                                    id="category"
+                                    value={categoryId}
+                                    onChange={(e) => setCategoryId(e.target.value)}
+                                    className="flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--text-primary)] focus:outline-none"
+                                >
+                                    <option value="">No Category</option>
+                                    {categories.map((cat) => (
+                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    ))}
+                                </select>
+                                {onManageCategories && (
+                                    <button
+                                        type="button"
+                                        onClick={onManageCategories}
+                                        className="flex items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 text-[var(--text-primary)] hover:bg-[var(--bg-input)] hover:border-[var(--text-primary)] transition-colors"
+                                        title="Manage Categories"
+                                    >
+                                        <PlusIcon className="h-4 w-4" />
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         <div className="grid gap-2">

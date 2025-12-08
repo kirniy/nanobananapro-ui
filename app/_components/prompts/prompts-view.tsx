@@ -140,8 +140,8 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
                         <button
                             onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
                             className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${showFavoritesOnly
-                                    ? "bg-[var(--bg-subtle)] text-[var(--text-primary)]"
-                                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
+                                ? "bg-[var(--bg-subtle)] text-[var(--text-primary)]"
+                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
                                 }`}
                         >
                             <span>Favorites</span>
@@ -163,8 +163,8 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
                         <button
                             onClick={() => setSelectedCategory(null)}
                             className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${selectedCategory === null
-                                    ? "bg-[var(--bg-subtle)] text-[var(--text-primary)]"
-                                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
+                                ? "bg-[var(--bg-subtle)] text-[var(--text-primary)]"
+                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
                                 }`}
                         >
                             All Prompts
@@ -174,8 +174,8 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
                                 key={cat.id}
                                 onClick={() => setSelectedCategory(cat.id)}
                                 className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${selectedCategory === cat.id
-                                        ? "bg-[var(--bg-subtle)] text-[var(--text-primary)]"
-                                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
+                                    ? "bg-[var(--bg-subtle)] text-[var(--text-primary)]"
+                                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
                                     }`}
                             >
                                 <span className="flex items-center gap-2">
@@ -246,6 +246,7 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
                 initialData={editingPrompt}
                 categories={categories}
                 onSave={handleSavePrompt}
+                onManageCategories={() => setIsCategoryManagerOpen(true)}
             />
 
             <CategoryManager

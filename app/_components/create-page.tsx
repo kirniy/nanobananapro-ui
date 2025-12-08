@@ -21,6 +21,7 @@ import { UserMenu } from "./auth/user-menu";
 import { useCloudSync } from "./create-page/use-cloud-sync";
 import { PromptsView } from "./prompts/prompts-view";
 import { PromptEditor } from "./prompts/prompt-editor";
+import { CategoryManager } from "./prompts/category-manager";
 import { usePrompts } from "./prompts/use-prompts";
 import type { Prompt } from "./prompts/types";
 import { useAuth } from "./auth/auth-context";
@@ -1158,8 +1159,9 @@ export function CreatePage() {
     [clearAttachmentError],
   );
 
-  const { createPrompt, categories } = usePrompts();
+  const { createPrompt, categories, createCategory, updateCategory, deleteCategory } = usePrompts();
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<Prompt | undefined>(undefined);
 
   const handleSaveToPrompts = useCallback((content: string, attachments?: { url: string; type: "image"; name: string }[]) => {
@@ -1378,6 +1380,16 @@ export function CreatePage() {
           await createPrompt(data);
           setIsEditorOpen(false);
         }}
+        onManageCategories={() => setIsCategoryManagerOpen(true)}
+      />
+
+      <CategoryManager
+        isOpen={isCategoryManagerOpen}
+        onClose={() => setIsCategoryManagerOpen(false)}
+        categories={categories}
+        onCreate={createCategory}
+        onUpdate={updateCategory}
+        onDelete={deleteCategory}
       />
     </div>
   );
