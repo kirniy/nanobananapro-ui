@@ -190,6 +190,15 @@ const ImageTile = memo(function ImageTile({
     onToggleFavorite?.();
   }, [onToggleFavorite, isFavorite]);
 
+  const handleTileClick = useCallback((e: React.MouseEvent) => {
+    // Only expand if we clicked on the image itself, not on action buttons
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-action-bar]')) {
+      return;
+    }
+    onExpand();
+  }, [onExpand]);
+
   const width = Math.max(size?.width ?? 1024, 256);
   const height = Math.max(size?.height ?? 1024, 256);
   const maxDimension = Math.max(width, height);
@@ -237,15 +246,6 @@ const ImageTile = memo(function ImageTile({
       </div>
     );
   }
-
-  const handleTileClick = useCallback((e: React.MouseEvent) => {
-    // Only expand if we clicked on the image itself, not on action buttons
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-action-bar]')) {
-      return;
-    }
-    onExpand();
-  }, [onExpand]);
 
   return (
     <div
