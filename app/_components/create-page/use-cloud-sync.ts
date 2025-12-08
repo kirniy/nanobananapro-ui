@@ -98,9 +98,15 @@ export function useCloudSync({
             await saveFavoritesToCloud(mergedFavorites);
           }
 
+          // Reload from cloud to get updated URLs (after uploading local images, URLs change to Supabase URLs)
+          // This ensures local state has the permanent cloud URLs instead of blob URLs
+          const updatedCloudGenerations = localOnlyGenerations.length > 0 && syncImages
+            ? await loadGenerationsFromCloud()
+            : cloudGenerations;
+
           // Merge cloud data into local state
-          if (cloudGenerations.length > 0) {
-            onGenerationsLoaded(cloudGenerations);
+          if (updatedCloudGenerations.length > 0) {
+            onGenerationsLoaded(updatedCloudGenerations);
           }
 
           if (cloudFavorites.size > 0) {

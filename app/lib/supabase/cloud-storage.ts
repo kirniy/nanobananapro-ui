@@ -292,9 +292,13 @@ export async function loadSettingsFromCloud(): Promise<Record<string, unknown> |
     .from("user_settings")
     .select("settings")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle(); // Use maybeSingle() instead of single() to handle 0 rows gracefully
 
-  if (error && error.code !== "PGRST116") { // PGRST116 = not found
+  if (error) {
+    // Silently return null for common "no data" errors
+    if (error.code === "PGRST116" || error.code === "406") {
+      return null;
+    }
     console.error("Failed to load settings from cloud:", error);
     throw error;
   }
@@ -652,7 +656,19 @@ function getExtensionFromMime(mimeType: string): string {
 }
 
 /**
+ * Fetch a blob URL and return the blob data
+ */
+async function fetchBlobUrl(blobUrl: string): Promise<Blob> {
+  const response = await fetch(blobUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch blob URL: ${response.status}`);
+  }
+  return response.blob();
+}
+
+/**
  * Upload a single image to Supabase Storage
+ * Supports: base64 data URLs, blob URLs, and Blob objects
  */
 export async function uploadImage(
   imageData: string | Blob,
@@ -671,13 +687,18 @@ export async function uploadImage(
 
   if (typeof imageData === "string") {
     if (isBase64DataUrl(imageData)) {
+      // Handle base64 data URL
       blob = dataUrlToBlob(imageData);
       const mimeMatch = imageData.match(/data:([^;]+)/);
       if (mimeMatch) {
         extension = getExtensionFromMime(mimeMatch[1]);
       }
+    } else if (isBlobUrl(imageData)) {
+      // Handle blob URL - fetch it to get the actual blob
+      blob = await fetchBlobUrl(imageData);
+      extension = getExtensionFromMime(blob.type);
     } else {
-      throw new Error("Invalid image data: expected base64 data URL or Blob");
+      throw new Error("Invalid image data: expected base64 data URL, blob URL, or Blob");
     }
   } else {
     blob = imageData;
