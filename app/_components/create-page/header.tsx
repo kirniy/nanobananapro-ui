@@ -48,6 +48,10 @@ type HeaderProps = {
   onRemoveAttachment: (attachmentId: string) => void;
   onPreviewAttachment: (attachment: PromptAttachment) => void;
   isAttachmentLimitReached: boolean;
+  // Cloud sync settings
+  syncImages?: boolean;
+  onSyncImagesChange?: (value: boolean) => void;
+  isCloudEnabled?: boolean;
 };
 
 export function Header({
@@ -76,6 +80,9 @@ export function Header({
   onRemoveAttachment,
   onPreviewAttachment,
   isAttachmentLimitReached,
+  syncImages,
+  onSyncImagesChange,
+  isCloudEnabled,
 }: HeaderProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
@@ -470,8 +477,36 @@ export function Header({
                         <p className="text-[10px] font-bold text-orange-400 mt-1 text-center">
                           ⚠️ API calls may fail or incur charges; you are fully responsible for any usage.
                         </p>
-                        
+
                         <p className="text-[10px] text-[var(--text-muted)] text-center">Keys are stored locally on your device.</p>
+
+                        {/* Cloud Sync Settings */}
+                        {isCloudEnabled && onSyncImagesChange && (
+                          <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
+                            <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3">Cloud Sync</span>
+                            <label className="flex items-center justify-between gap-3 cursor-pointer">
+                              <div className="flex flex-col">
+                                <span className="text-sm text-[var(--text-primary)]">Sync Images</span>
+                                <span className="text-[10px] text-[var(--text-muted)]">Upload generated images to cloud storage</span>
+                              </div>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={syncImages}
+                                onClick={() => onSyncImagesChange(!syncImages)}
+                                className={`relative h-6 w-11 rounded-full transition-colors ${
+                                  syncImages ? "bg-[var(--accent-primary)]" : "bg-[var(--bg-input)] border border-[var(--border-subtle)]"
+                                }`}
+                              >
+                                <span
+                                  className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                                    syncImages ? "translate-x-5" : "translate-x-0"
+                                  }`}
+                                />
+                              </button>
+                            </label>
+                          </div>
+                        )}
                      </div>
                 </div>
             ) : null}

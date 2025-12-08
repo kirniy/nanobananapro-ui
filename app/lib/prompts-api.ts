@@ -108,3 +108,16 @@ export async function deleteCategory(id: string) {
     const { error } = await supabase.from("prompt_categories").delete().eq("id", id);
     if (error) throw error;
 }
+
+export async function updateCategory(id: string, name: string, color?: string) {
+    const supabase = createClient();
+    const { data, error } = await supabase
+        .from("prompt_categories")
+        .update({ name, color })
+        .eq("id", id)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+}

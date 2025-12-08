@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { MagnifyingGlassIcon, HeartIcon, HeartFilledIcon } from "./icons";
 import { QuickActionsOverlay } from "./quick-actions-overlay";
 import type { Generation } from "./types";
+import { generateSmartFilename } from "./utils";
 
 type GalleryViewProps = {
   generations: Generation[];
@@ -12,6 +13,7 @@ type GalleryViewProps = {
   favorites?: Set<string>;
   onToggleFavorite?: (generationId: string, imageIndex: number) => void;
   onUsePrompt?: (prompt: string, inputImages: Generation["inputImages"]) => void;
+  onSaveToPrompts?: (content: string, attachments?: { url: string; type: "image"; name: string }[]) => void;
 };
 
 export function GalleryView({
@@ -20,6 +22,7 @@ export function GalleryView({
   favorites = new Set(),
   onToggleFavorite,
   onUsePrompt,
+  onSaveToPrompts,
 }: GalleryViewProps) {
   const [search, setSearch] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -36,6 +39,7 @@ export function GalleryView({
         aspect: gen.aspect,
         createdAt: gen.createdAt,
         inputImages: gen.inputImages || [],
+        outputFormat: gen.outputFormat || "png",
       }))
     );
   }, [generations]);
@@ -73,6 +77,27 @@ export function GalleryView({
     }
   }, []);
 
+  const handleDownload = useCallback(async (src: string, prompt: string, outputFormat: string) => {
+    try {
+      const response = await fetch(src, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Download failed (${response.status})`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const extension = outputFormat === "jpeg" ? "jpg" : outputFormat;
+      link.href = url;
+      link.download = generateSmartFilename(prompt, extension);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download image", error);
+    }
+  }, []);
+
   return (
     <div className="w-full max-w-[1600px] mx-auto flex flex-col gap-6 animate-in fade-in duration-500">
       {/* Search and Filter Bar */}
@@ -95,11 +120,10 @@ export function GalleryView({
         <button
           type="button"
           onClick={() => setShowFavoritesOnly((prev) => !prev)}
-          className={`flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold border transition-all ${
-            showFavoritesOnly
-              ? "bg-[#ff4757] border-[#ff4757] text-white"
-              : "bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--text-muted)]"
-          }`}
+          className={`flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold border transition-all ${showFavoritesOnly
+            ? "bg-[#ff4757] border-[#ff4757] text-white"
+            : "bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-white hover:border-[var(--text-muted)]"
+            }`}
           title={showFavoritesOnly ? "Show all images" : "Show favorites only"}
         >
           {showFavoritesOnly ? (
@@ -155,6 +179,8 @@ export function GalleryView({
                     onToggleFavorite={() => onToggleFavorite(item.id, item.index)}
                     onCopyPrompt={() => handleCopyPrompt(item.prompt)}
                     onReuse={onUsePrompt ? () => onUsePrompt(item.prompt, item.inputImages) : undefined}
+                    onSaveToPrompts={onSaveToPrompts ? () => onSaveToPrompts(item.prompt, item.inputImages?.map(img => ({ url: img.url, type: "image", name: img.name || "reference.png" }))) : undefined}
+                    onDownload={() => handleDownload(item.src, item.prompt, item.outputFormat)}
                     visible={isHovered}
                   />
                 )}

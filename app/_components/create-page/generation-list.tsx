@@ -4,8 +4,9 @@ import { memo, useState, useCallback } from "react";
 import { type AspectKey } from "../../lib/seedream-options";
 import { GenerationDetailsCard } from "./generation-details-card";
 import { debugLog } from "./logger";
-import { HeartIcon, HeartFilledIcon, CopyIcon, CheckIcon, RefreshIcon } from "./icons";
+import { HeartIcon, HeartFilledIcon, CopyIcon, CheckIcon, RefreshIcon, DownloadIcon } from "./icons";
 import type { Generation } from "./types";
+import { generateSmartFilename } from "./utils";
 
 type GenerationGroupProps = {
   label: string;
@@ -20,6 +21,7 @@ type GenerationGroupProps = {
   onRetryGeneration?: (generationId: string) => void;
   favorites?: Set<string>;
   onToggleFavorite?: (generationId: string, imageIndex: number) => void;
+  onSaveToPrompts?: (content: string, attachments?: { url: string; type: "image"; name: string }[]) => void;
 };
 
 export const GenerationGroup = memo(function GenerationGroup({
@@ -35,6 +37,7 @@ export const GenerationGroup = memo(function GenerationGroup({
   onRetryGeneration,
   favorites = new Set(),
   onToggleFavorite,
+  onSaveToPrompts,
 }: GenerationGroupProps) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -61,6 +64,7 @@ export const GenerationGroup = memo(function GenerationGroup({
                   favorites={favorites}
                   onToggleFavorite={onToggleFavorite}
                   onUsePrompt={onUsePrompt}
+                  onSaveToPrompts={onSaveToPrompts}
                 />
               </div>
               <div className="w-full max-w-[180px] lg:w-44 lg:basis-44 lg:flex-none lg:self-start lg:shrink-0 transition-opacity duration-300 lg:opacity-80 lg:group-hover:opacity-100">
@@ -73,6 +77,7 @@ export const GenerationGroup = memo(function GenerationGroup({
                   onDeleteGeneration={onDeleteGeneration}
                   canDelete={!isGenerating}
                   onRetry={onRetryGeneration ? () => onRetryGeneration(generation.id) : undefined}
+                  onSaveToPrompts={onSaveToPrompts}
                 />
               </div>
             </div>
@@ -91,6 +96,7 @@ type GenerationGalleryProps = {
   favorites?: Set<string>;
   onToggleFavorite?: (generationId: string, imageIndex: number) => void;
   onUsePrompt?: (prompt: string, inputImages: Generation["inputImages"]) => void;
+  onSaveToPrompts?: (content: string, attachments?: { url: string; type: "image"; name: string }[]) => void;
 };
 
 const GenerationGallery = memo(function GenerationGallery({
@@ -101,6 +107,7 @@ const GenerationGallery = memo(function GenerationGallery({
   favorites = new Set(),
   onToggleFavorite,
   onUsePrompt,
+  onSaveToPrompts,
 }: GenerationGalleryProps) {
   const layout = resolveGalleryLayout(generation);
 
@@ -134,6 +141,7 @@ const GenerationGallery = memo(function GenerationGallery({
             onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(generation.id, index) : undefined}
             onCopyPrompt={() => navigator.clipboard.writeText(generation.prompt)}
             onReuse={onUsePrompt ? () => onUsePrompt(generation.prompt, generation.inputImages || []) : undefined}
+            outputFormat={generation.outputFormat || "png"}
           />
         ))}
       </div>
@@ -155,6 +163,7 @@ type ImageTileProps = {
   onToggleFavorite?: () => void;
   onCopyPrompt?: () => void;
   onReuse?: () => void;
+  outputFormat?: string;
 };
 
 const ImageTile = memo(function ImageTile({
@@ -171,10 +180,12 @@ const ImageTile = memo(function ImageTile({
   onToggleFavorite,
   onCopyPrompt,
   onReuse,
+  outputFormat = "png",
 }: ImageTileProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [heartBurst, setHeartBurst] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const handleCopyPrompt = useCallback(() => {
     onCopyPrompt?.();
@@ -189,6 +200,29 @@ const ImageTile = memo(function ImageTile({
     }
     onToggleFavorite?.();
   }, [onToggleFavorite, isFavorite]);
+
+  const handleDownload = useCallback(async () => {
+    if (!src || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const response = await fetch(src, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Download failed (${response.status})`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const extension = outputFormat === "jpeg" ? "jpg" : outputFormat;
+      link.href = url;
+      link.download = generateSmartFilename(prompt, extension);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download image", error);
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [src, prompt, outputFormat, isDownloading]);
 
   const handleTileClick = useCallback((e: React.MouseEvent) => {
     // Only expand if we clicked on the image itself, not on action buttons
@@ -337,6 +371,19 @@ const ImageTile = memo(function ImageTile({
                 title="Reuse this prompt"
               >
                 <RefreshIcon className="h-4 w-4" />
+              </button>
+            )}
+
+            {/* Download Button */}
+            {src && (
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className={`flex items-center justify-center w-8 h-8 rounded-md transition-all ${isDownloading ? "text-[var(--accent-primary)]" : "text-white/80 hover:text-white hover:bg-white/15"}`}
+                title="Download image"
+              >
+                <DownloadIcon className="h-4 w-4" />
               </button>
             )}
           </div>

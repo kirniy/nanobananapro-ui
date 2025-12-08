@@ -20,6 +20,9 @@ import { KeyboardShortcutsPanel } from "./create-page/keyboard-shortcuts-panel";
 import { UserMenu } from "./auth/user-menu";
 import { useCloudSync } from "./create-page/use-cloud-sync";
 import { PromptsView } from "./prompts/prompts-view";
+import { PromptEditor } from "./prompts/prompt-editor";
+import { usePrompts } from "./prompts/use-prompts";
+import type { Prompt } from "./prompts/types";
 import { useAuth } from "./auth/auth-context";
 
 const defaultPrompt =
@@ -209,7 +212,7 @@ export function CreatePage() {
   const isAttachmentLimitReached = attachments.length >= MAX_ATTACHMENTS;
 
   // Cloud sync - syncs generations and favorites to Supabase when user is authenticated
-  const { deleteFromCloud } = useCloudSync({
+  const { deleteFromCloud, isCloudEnabled, syncImages, setSyncImages } = useCloudSync({
     generations,
     favorites,
     onGenerationsLoaded: useCallback((cloudGenerations: Generation[]) => {
@@ -1294,6 +1297,9 @@ export function CreatePage() {
               onRemoveAttachment={handleRemoveAttachment}
               onPreviewAttachment={handlePreviewAttachment}
               isAttachmentLimitReached={isAttachmentLimitReached}
+              syncImages={syncImages}
+              onSyncImagesChange={setSyncImages}
+              isCloudEnabled={isCloudEnabled}
             />
           </div>
         </div>

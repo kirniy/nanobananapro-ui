@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { usePrompts } from "./use-prompts";
 import { PromptCard } from "./prompt-card";
 import { PromptEditor } from "./prompt-editor";
-import { PlusIcon, SearchIcon, FilterIcon } from "lucide-react";
+import { CategoryManager } from "./category-manager";
+import { PlusIcon, SearchIcon, FilterIcon, SettingsIcon } from "lucide-react";
 import type { Prompt, CreatePromptInput } from "./types";
 
 type PromptsViewProps = {
@@ -17,14 +18,19 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
         createPrompt,
         updatePrompt,
         deletePrompt,
-        toggleFavorite
+        toggleFavorite,
+        createCategory,
+        updateCategory,
+        deleteCategory
     } = usePrompts();
 
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
     const [editingPrompt, setEditingPrompt] = useState<Prompt | undefined>(undefined);
+    const [draggedPromptId, setDraggedPromptId] = useState<string | null>(null);
 
     const filteredPrompts = useMemo(() => {
         return prompts.filter(prompt => {
@@ -56,6 +62,45 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
         } else {
             await createPrompt(data);
         }
+    };
+
+    const handleDragStart = (e: React.DragEvent, id: string) => {
+        e.dataTransfer.effectAllowed = "move";
+        setDraggedPromptId(id);
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleDrop = async (e: React.DragEvent, targetId: string) => {
+        e.preventDefault();
+        if (!draggedPromptId || draggedPromptId === targetId) {
+            setDraggedPromptId(null);
+            return;
+        }
+
+        const draggedIndex = prompts.findIndex(p => p.id === draggedPromptId);
+        const targetIndex = prompts.findIndex(p => p.id === targetId);
+
+        if (draggedIndex === -1 || targetIndex === -1) {
+            setDraggedPromptId(null);
+            return;
+        }
+
+        // Swap order indices logic (simplified for now, ideally batch update)
+        const draggedPrompt = prompts[draggedIndex];
+        const targetPrompt = prompts[targetIndex];
+
+        // Optimistic update handled by hook if we call updatePrompt? 
+        // Actually hook does optimistic update.
+        // We just swap their order_index
+
+        await updatePrompt(draggedPrompt.id, { order_index: targetPrompt.order_index });
+        await updatePrompt(targetPrompt.id, { order_index: draggedPrompt.order_index });
+
+        setDraggedPromptId(null);
     };
 
     if (isLoading) {
@@ -105,9 +150,15 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
                     </div>
 
                     <div className="flex flex-col gap-1">
-                        <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center justify-between px-2 mb-1">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Categories</h3>
-                            {/* Add Category Button could go here */}
+                            <button
+                                onClick={() => setIsCategoryManagerOpen(true)}
+                                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                                title="Manage Categories"
+                            >
+                                <SettingsIcon className="h-3.5 w-3.5" />
+                            </button>
                         </div>
                         <button
                             onClick={() => setSelectedCategory(null)}
@@ -145,15 +196,23 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
                 {filteredPrompts.length > 0 ? (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {filteredPrompts.map((prompt) => (
-                            <PromptCard
+                            <div
                                 key={prompt.id}
-                                prompt={prompt}
-                                category={categories.find(c => c.id === prompt.category_id)}
-                                onEdit={handleEditClick}
-                                onDelete={deletePrompt}
-                                onToggleFavorite={toggleFavorite}
-                                onUse={onUsePrompt}
-                            />
+                                draggable={!searchQuery && !selectedCategory && !showFavoritesOnly} // Only allow drag when not filtered
+                                onDragStart={(e) => handleDragStart(e, prompt.id)}
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => handleDrop(e, prompt.id)}
+                                className={`transition-opacity ${draggedPromptId === prompt.id ? "opacity-50" : "opacity-100"}`}
+                            >
+                                <PromptCard
+                                    prompt={prompt}
+                                    category={categories.find(c => c.id === prompt.category_id)}
+                                    onEdit={handleEditClick}
+                                    onDelete={deletePrompt}
+                                    onToggleFavorite={toggleFavorite}
+                                    onUse={onUsePrompt}
+                                />
+                            </div>
                         ))}
                     </div>
                 ) : (
@@ -187,6 +246,15 @@ export function PromptsView({ onUsePrompt }: PromptsViewProps) {
                 initialData={editingPrompt}
                 categories={categories}
                 onSave={handleSavePrompt}
+            />
+
+            <CategoryManager
+                isOpen={isCategoryManagerOpen}
+                onClose={() => setIsCategoryManagerOpen(false)}
+                categories={categories}
+                onCreate={createCategory}
+                onUpdate={updateCategory}
+                onDelete={deleteCategory}
             />
         </div>
     );

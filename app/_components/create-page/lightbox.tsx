@@ -35,6 +35,7 @@ type LightboxProps = {
   allEntries?: GalleryEntry[];
   onNavigateToEntry?: (entry: GalleryEntry) => void;
   favorites?: Set<string>;
+  onSaveToPrompts?: (content: string, attachments?: { url: string; type: "image"; name: string }[]) => void;
 };
 
 export function Lightbox({
@@ -56,6 +57,7 @@ export function Lightbox({
   allEntries = [],
   onNavigateToEntry,
   favorites = new Set(),
+  onSaveToPrompts,
 }: LightboxProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const thumbnailReelRef = useRef<HTMLDivElement>(null);
@@ -200,7 +202,7 @@ export function Lightbox({
     event.stopPropagation();
     const scaleAmount = -event.deltaY * 0.001;
     const newScale = Math.min(Math.max(0.1, transform.scale * (1 + scaleAmount)), 8);
-    
+
     setTransform((prev) => ({
       ...prev,
       scale: newScale,
@@ -233,16 +235,16 @@ export function Lightbox({
 
     if (imageContainerRef.current) {
       const { width: viewportWidth, height: viewportHeight } = imageContainerRef.current.getBoundingClientRect();
-      
+
       const effectiveImageWidth = viewportWidth * transform.scale;
       const effectiveImageHeight = viewportHeight * transform.scale;
 
       const limitX = Math.max(0, (effectiveImageWidth - viewportWidth) / 2);
       const limitY = Math.max(0, (effectiveImageHeight - viewportHeight) / 2);
-      
+
       const clampedX = Math.max(-limitX, Math.min(limitX, nextX));
       const clampedY = Math.max(-limitY, Math.min(limitY, nextY));
-      
+
       setTransform((prev) => ({
         ...prev,
         x: clampedX,
@@ -295,13 +297,13 @@ export function Lightbox({
 
       // 2. Draw Original (Foreground) - Clipped
       const splitX = (compareSliderPosition / 100) * width;
-      
+
       ctx.save();
       ctx.beginPath();
       // Clip left side to show Original
       ctx.rect(0, 0, splitX, height);
       ctx.clip();
-      
+
       ctx.drawImage(imgOriginal, 0, 0, width, height);
       ctx.restore();
 
@@ -310,9 +312,9 @@ export function Lightbox({
       ctx.moveTo(splitX, 0);
       ctx.lineTo(splitX, height);
       ctx.strokeStyle = 'white';
-      ctx.lineWidth = Math.max(2, width * 0.002); 
+      ctx.lineWidth = Math.max(2, width * 0.002);
       ctx.stroke();
-      
+
       // 4. Convert to Blob and Download
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error("Canvas to Blob failed");
@@ -346,9 +348,9 @@ export function Lightbox({
         onClick={onClose}
       />
       <div className="relative z-10 w-full max-w-6xl h-full md:h-auto md:max-h-[90vh] rounded-none md:rounded-2xl border-0 md:border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-0 md:p-2 shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col md:flex-row overflow-hidden">
-        
+
         {/* Image Container */}
-        <div 
+        <div
           ref={imageContainerRef}
           className="relative flex-1 bg-black/50 md:rounded-xl overflow-hidden flex items-center justify-center min-h-0 md:min-h-[70vh]"
           onWheel={handleWheel}
@@ -358,339 +360,350 @@ export function Lightbox({
           onMouseLeave={handleMouseUp}
           onContextMenu={(e) => e.preventDefault()}
         >
-            {canGoPrev ? (
-              <button
-                type="button"
-                aria-label="Previous image"
-                className="group absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/70 p-3 text-white backdrop-blur transition hover:bg-white hover:text-black hover:shadow-lg focus:outline-none"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onPrev();
-                }}
-              >
-                <ArrowLeftIcon className="h-5 w-5" />
-              </button>
-            ) : null}
-            
-            <div 
-              style={{ 
-                transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-                cursor: isCompareMode ? 'default' : 'grab'
+          {canGoPrev ? (
+            <button
+              type="button"
+              aria-label="Previous image"
+              className="group absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/70 p-3 text-white backdrop-blur transition hover:bg-white hover:text-black hover:shadow-lg focus:outline-none"
+              onClick={(event) => {
+                event.stopPropagation();
+                onPrev();
               }}
-              className="relative flex h-full w-full items-center justify-center transition-transform duration-75 ease-out"
             >
-              {isCompareMode && hasReferences ? (
-                <div className="relative h-full w-full">
-                  <CompareSlider
-                    original={entry.inputImages[selectedReferenceIndex].url}
-                    generated={entry.src}
-                    originalAlt="Reference image"
-                    generatedAlt={entry.prompt}
-                    position={compareSliderPosition}
-                    onPositionChange={setCompareSliderPosition}
-                  />
-                </div>
-              ) : (
-                <Image
-                  src={entry.src}
-                  alt={entry.prompt}
-                  width={entry.size.width}
-                  height={entry.size.height}
-                  className="max-h-full w-auto max-w-full select-none object-contain shadow-lg"
-                  draggable={false}
-                  priority
+              <ArrowLeftIcon className="h-5 w-5" />
+            </button>
+          ) : null}
+
+          <div
+            style={{
+              transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+              cursor: isCompareMode ? 'default' : 'grab'
+            }}
+            className="relative flex h-full w-full items-center justify-center transition-transform duration-75 ease-out"
+          >
+            {isCompareMode && hasReferences ? (
+              <div className="relative h-full w-full">
+                <CompareSlider
+                  original={entry.inputImages[selectedReferenceIndex].url}
+                  generated={entry.src}
+                  originalAlt="Reference image"
+                  generatedAlt={entry.prompt}
+                  position={compareSliderPosition}
+                  onPositionChange={setCompareSliderPosition}
                 />
-              )}
-            </div>
-            
-            {canGoNext ? (
-              <button
-                type="button"
-                aria-label="Next image"
-                className="group absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/70 p-3 text-white backdrop-blur transition hover:bg-white hover:text-black hover:shadow-lg focus:outline-none"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onNext();
-                }}
-              >
-                <ArrowRightIcon className="h-5 w-5" />
-              </button>
-            ) : null}
+              </div>
+            ) : (
+              <Image
+                src={entry.src}
+                alt={entry.prompt}
+                width={entry.size.width}
+                height={entry.size.height}
+                className="max-h-full w-auto max-w-full select-none object-contain shadow-lg"
+                draggable={false}
+                priority
+              />
+            )}
+          </div>
+
+          {canGoNext ? (
+            <button
+              type="button"
+              aria-label="Next image"
+              className="group absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/70 p-3 text-white backdrop-blur transition hover:bg-white hover:text-black hover:shadow-lg focus:outline-none"
+              onClick={(event) => {
+                event.stopPropagation();
+                onNext();
+              }}
+            >
+              <ArrowRightIcon className="h-5 w-5" />
+            </button>
+          ) : null}
         </div>
 
         {/* Sidebar for Details */}
         <div className="w-full md:w-[340px] bg-[var(--bg-panel)] p-4 md:p-6 flex flex-col border-l border-[var(--border-subtle)] max-h-[50vh] md:max-h-full">
-           <div className="flex justify-between items-start mb-3 md:mb-4">
-             <div className="flex flex-col gap-1">
-               <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Details</h2>
-               {totalCount > 1 && (
-                 <span className="text-[10px] font-medium text-[var(--accent-primary)]">
-                   {currentIndex + 1} of {totalCount}
-                 </span>
-               )}
-             </div>
-             <div className="flex items-center gap-2">
-               {transform.scale !== 1 && (
-                 <span className="text-[10px] font-mono text-[var(--text-muted)] bg-[var(--bg-input)] px-2 py-1 rounded">
-                   {zoomPercentage}%
-                 </span>
-               )}
-               {/* Keyboard shortcut hint */}
-               {onShowShortcuts && (
-                 <button
-                   type="button"
-                   className="rounded-md p-1.5 text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-subtle)] transition-colors"
-                   onClick={onShowShortcuts}
-                   title="Keyboard shortcuts (?)"
-                 >
-                   <KeyboardIcon className="h-4 w-4" />
-                 </button>
-               )}
-               <button
-                 type="button"
-                 className="rounded-md p-2 -mt-2 -mr-2 text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-subtle)]"
-                 onClick={onClose}
-               >
-                 <span className="kbd kbd-sm">Esc</span>
-               </button>
-             </div>
-           </div>
-
-           <div className="flex-1 overflow-y-auto pr-2">
-             {/* Expanded Prompt Display */}
-             <div className="relative group mb-4">
-               <div className="flex items-start justify-between gap-2 mb-2">
-                 <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Prompt</span>
-                 <div className="flex items-center gap-1">
-                   {/* Favorite Button */}
-                   {onToggleFavorite && (
-                     <button
-                       type="button"
-                       onClick={handleFavoriteClick}
-                       className={`heart-btn p-1.5 rounded-md transition-all ${isFavorite ? "favorited" : "text-[var(--text-muted)] hover:text-[#ff4757]"} ${heartBurst ? "burst animate-heart-pop" : ""}`}
-                       title={isFavorite ? "Remove from favorites (L)" : "Add to favorites (L)"}
-                     >
-                       {isFavorite ? <HeartFilledIcon className="h-4 w-4" /> : <HeartIcon className="h-4 w-4" />}
-                     </button>
-                   )}
-                   {/* Copy Button */}
-                   <button
-                     type="button"
-                     onClick={handleCopyPrompt}
-                     className={`p-1.5 rounded-md transition-all ${copiedPrompt ? "copy-success" : "text-[var(--text-muted)] hover:text-[var(--accent-primary)] hover:bg-[var(--bg-input)]"}`}
-                     title="Copy prompt (C)"
-                   >
-                     {copiedPrompt ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
-                   </button>
-                 </div>
-               </div>
-               <div
-                 className={`relative bg-[var(--bg-input)] rounded-lg p-3 border border-[var(--border-subtle)] ${showPromptExpanded ? "" : "cursor-pointer"}`}
-                 onClick={() => !showPromptExpanded && entry.prompt.length > 150 && setShowPromptExpanded(true)}
-               >
-                 <p className={`text-sm leading-relaxed text-[var(--text-primary)] font-medium ${showPromptExpanded ? "max-h-64" : "max-h-24"} overflow-y-auto transition-all duration-300`}>
-                   {entry.prompt}
-                 </p>
-                 {entry.prompt.length > 150 && !showPromptExpanded && (
-                   <button
-                     type="button"
-                     onClick={() => setShowPromptExpanded(true)}
-                     className="absolute bottom-2 right-2 text-[10px] font-semibold text-[var(--accent-primary)] hover:underline"
-                   >
-                     Show more
-                   </button>
-                 )}
-                 {showPromptExpanded && (
-                   <button
-                     type="button"
-                     onClick={() => setShowPromptExpanded(false)}
-                     className="absolute bottom-2 right-2 text-[10px] font-semibold text-[var(--text-muted)] hover:text-white"
-                   >
-                     Show less
-                   </button>
-                 )}
-               </div>
-             </div>
-
-             <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-secondary)] mb-3 md:mb-4">
-                <div className="p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                  <span className="block text-[10px] uppercase tracking-wide opacity-60 mb-1">Aspect</span>
-                  {getAspectDescription(entry.aspect)}
-                </div>
-                <div className="p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                  <span className="block text-[10px] uppercase tracking-wide opacity-60 mb-1">Quality</span>
-                  {getQualityLabel(entry.quality)}
-                </div>
-             </div>
-
-             {/* Thumbnail Reel */}
-             {allEntries.length > 1 && onNavigateToEntry && (
-               <div className="mb-4">
-                 <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 block">Gallery</span>
-                 <div ref={thumbnailReelRef} className="thumbnail-reel">
-                   {allEntries.map((thumbEntry, idx) => {
-                     const thumbFavoriteId = `${thumbEntry.generationId}:${thumbEntry.imageIndex}`;
-                     const isThumbFavorite = favorites.has(thumbFavoriteId);
-                     const isActive = idx === currentIndex;
-                     return (
-                       <button
-                         key={`${thumbEntry.generationId}-${thumbEntry.imageIndex}`}
-                         type="button"
-                         onClick={() => onNavigateToEntry(thumbEntry)}
-                         className={`thumbnail-item relative ${isActive ? "active" : ""}`}
-                       >
-                         <Image
-                           src={thumbEntry.src}
-                           alt={thumbEntry.prompt}
-                           fill
-                           sizes="64px"
-                           className="object-cover"
-                         />
-                         {isThumbFavorite && (
-                           <HeartFilledIcon className="favorite-badge" />
-                         )}
-                       </button>
-                     );
-                   })}
-                 </div>
-               </div>
-             )}
-           </div>
-
-           <div className="mt-auto pt-3 md:pt-4 border-t border-[var(--border-subtle)] space-y-2 flex flex-col gap-1">
-              {/* Primary Actions Row */}
-              <div className="flex gap-2">
+          <div className="flex justify-between items-start mb-3 md:mb-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Details</h2>
+              {totalCount > 1 && (
+                <span className="text-[10px] font-medium text-[var(--accent-primary)]">
+                  {currentIndex + 1} of {totalCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {transform.scale !== 1 && (
+                <span className="text-[10px] font-mono text-[var(--text-muted)] bg-[var(--bg-input)] px-2 py-1 rounded">
+                  {zoomPercentage}%
+                </span>
+              )}
+              {/* Keyboard shortcut hint */}
+              {onShowShortcuts && (
                 <button
                   type="button"
-                  onClick={onDownload}
-                  disabled={isDownloading}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--accent-primary)] px-4 py-2.5 text-sm font-bold text-[var(--accent-primary-text)] shadow-[0_0_20px_-5px_rgba(255,215,0,0.3)] transition-all hover:bg-[var(--accent-primary-hover)] hover:shadow-[0_0_28px_-5px_rgba(255,215,0,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-md p-1.5 text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-subtle)] transition-colors"
+                  onClick={onShowShortcuts}
+                  title="Keyboard shortcuts (?)"
                 >
-                  {isDownloading ? <SpinnerIcon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
-                  <span className="hidden sm:inline">{isDownloading ? "Saving..." : "Download"}</span>
-                  <span className="kbd kbd-sm ml-1 bg-black/20 border-black/30 text-[var(--accent-primary-text)]">D</span>
+                  <KeyboardIcon className="h-4 w-4" />
                 </button>
+              )}
+              <button
+                type="button"
+                className="rounded-md p-2 -mt-2 -mr-2 text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-subtle)]"
+                onClick={onClose}
+              >
+                <span className="kbd kbd-sm">Esc</span>
+              </button>
+            </div>
+          </div>
 
-                {/* Upscale Button */}
-                {canUpscale && (
-                  <div className="relative">
+          <div className="flex-1 overflow-y-auto pr-2">
+            {/* Expanded Prompt Display */}
+            <div className="relative group mb-4">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Prompt</span>
+                <div className="flex items-center gap-1">
+                  {/* Favorite Button */}
+                  {onToggleFavorite && (
                     <button
                       type="button"
-                      onClick={() => setShowUpscaleMenu((prev) => !prev)}
-                      className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-all ${
-                        showUpscaleMenu
-                          ? "bg-[var(--accent-secondary)] border-[var(--accent-secondary)] text-white"
-                          : "bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-white hover:border-[var(--text-muted)]"
-                      }`}
-                      title="Upscale image (U)"
+                      onClick={handleFavoriteClick}
+                      className={`heart-btn p-1.5 rounded-md transition-all ${isFavorite ? "favorited" : "text-[var(--text-muted)] hover:text-[#ff4757]"} ${heartBurst ? "burst animate-heart-pop" : ""}`}
+                      title={isFavorite ? "Remove from favorites (L)" : "Add to favorites (L)"}
                     >
-                      <UpscaleIcon className="h-4 w-4" />
-                      <span className="kbd kbd-sm">U</span>
+                      {isFavorite ? <HeartFilledIcon className="h-4 w-4" /> : <HeartIcon className="h-4 w-4" />}
                     </button>
-                    {showUpscaleMenu && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-[var(--bg-panel)] border border-[var(--border-highlight)] rounded-lg shadow-xl overflow-hidden z-10 min-w-[140px] animate-in fade-in slide-in-from-bottom-2 duration-150">
-                        <div className="p-2 border-b border-[var(--border-subtle)]">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Upscale to</span>
-                        </div>
-                        {upscaleOptions.map((targetQuality) => (
-                          <button
-                            key={targetQuality}
-                            type="button"
-                            onClick={() => {
-                              onUpscale?.(targetQuality);
-                              setShowUpscaleMenu(false);
-                            }}
-                            className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition-colors"
-                          >
-                            <span>{getQualityLabel(targetQuality)}</span>
-                            <span className="text-[10px] text-[var(--text-muted)]">
-                              {targetQuality === "2k" ? "2048px" : "4096px"}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  )}
+                  {/* Copy Button */}
+                  <button
+                    type="button"
+                    onClick={handleCopyPrompt}
+                    className={`p-1.5 rounded-md transition-all ${copiedPrompt ? "copy-success" : "text-[var(--text-muted)] hover:text-[var(--accent-primary)] hover:bg-[var(--bg-input)]"}`}
+                    title="Copy prompt (C)"
+                  >
+                    {copiedPrompt ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+                  </button>
+
+                  {/* Save to Prompts Button */}
+                  {onSaveToPrompts && (
+                    <button
+                      type="button"
+                      onClick={() => onSaveToPrompts(entry.prompt, entry.inputImages?.map(img => ({ url: img.url, type: "image", name: img.name || "reference.png" })))}
+                      className="p-1.5 rounded-md transition-all text-[var(--text-muted)] hover:text-[var(--accent-primary)] hover:bg-[var(--bg-input)]"
+                      title="Save to Prompts"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div
+                className={`relative bg-[var(--bg-input)] rounded-lg p-3 border border-[var(--border-subtle)] ${showPromptExpanded ? "" : "cursor-pointer"}`}
+                onClick={() => !showPromptExpanded && entry.prompt.length > 150 && setShowPromptExpanded(true)}
+              >
+                <p className={`text-sm leading-relaxed text-[var(--text-primary)] font-medium ${showPromptExpanded ? "max-h-64" : "max-h-24"} overflow-y-auto transition-all duration-300`}>
+                  {entry.prompt}
+                </p>
+                {entry.prompt.length > 150 && !showPromptExpanded && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPromptExpanded(true)}
+                    className="absolute bottom-2 right-2 text-[10px] font-semibold text-[var(--accent-primary)] hover:underline"
+                  >
+                    Show more
+                  </button>
+                )}
+                {showPromptExpanded && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPromptExpanded(false)}
+                    className="absolute bottom-2 right-2 text-[10px] font-semibold text-[var(--text-muted)] hover:text-white"
+                  >
+                    Show less
+                  </button>
                 )}
               </div>
+            </div>
 
-              {isCompareMode && hasReferences && (
+            <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-secondary)] mb-3 md:mb-4">
+              <div className="p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <span className="block text-[10px] uppercase tracking-wide opacity-60 mb-1">Aspect</span>
+                {getAspectDescription(entry.aspect)}
+              </div>
+              <div className="p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <span className="block text-[10px] uppercase tracking-wide opacity-60 mb-1">Quality</span>
+                {getQualityLabel(entry.quality)}
+              </div>
+            </div>
+
+            {/* Thumbnail Reel */}
+            {allEntries.length > 1 && onNavigateToEntry && (
+              <div className="mb-4">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 block">Gallery</span>
+                <div ref={thumbnailReelRef} className="thumbnail-reel">
+                  {allEntries.map((thumbEntry, idx) => {
+                    const thumbFavoriteId = `${thumbEntry.generationId}:${thumbEntry.imageIndex}`;
+                    const isThumbFavorite = favorites.has(thumbFavoriteId);
+                    const isActive = idx === currentIndex;
+                    return (
+                      <button
+                        key={`${thumbEntry.generationId}-${thumbEntry.imageIndex}`}
+                        type="button"
+                        onClick={() => onNavigateToEntry(thumbEntry)}
+                        className={`thumbnail-item relative ${isActive ? "active" : ""}`}
+                      >
+                        <Image
+                          src={thumbEntry.src}
+                          alt={thumbEntry.prompt}
+                          fill
+                          sizes="64px"
+                          className="object-cover"
+                        />
+                        {isThumbFavorite && (
+                          <HeartFilledIcon className="favorite-badge" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-auto pt-3 md:pt-4 border-t border-[var(--border-subtle)] space-y-2 flex flex-col gap-1">
+            {/* Primary Actions Row */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onDownload}
+                disabled={isDownloading}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--accent-primary)] px-4 py-2.5 text-sm font-bold text-[var(--accent-primary-text)] shadow-[0_0_20px_-5px_rgba(255,215,0,0.3)] transition-all hover:bg-[var(--accent-primary-hover)] hover:shadow-[0_0_28px_-5px_rgba(255,215,0,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDownloading ? <SpinnerIcon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
+                <span className="hidden sm:inline">{isDownloading ? "Saving..." : "Download"}</span>
+                <span className="kbd kbd-sm ml-1 bg-black/20 border-black/30 text-[var(--accent-primary-text)]">D</span>
+              </button>
+
+              {/* Upscale Button */}
+              {canUpscale && (
+                <div className="relative">
                   <button
                     type="button"
-                    onClick={handleDownloadComparison}
-                    disabled={isDownloadingComparison}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--bg-subtle)] border border-[var(--border-subtle)] px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:bg-[var(--bg-input)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => setShowUpscaleMenu((prev) => !prev)}
+                    className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-all ${showUpscaleMenu
+                      ? "bg-[var(--accent-secondary)] border-[var(--accent-secondary)] text-white"
+                      : "bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-white hover:border-[var(--text-muted)]"
+                      }`}
+                    title="Upscale image (U)"
                   >
-                    {isDownloadingComparison ? <SpinnerIcon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
-                    {isDownloadingComparison ? "Saving..." : "Save Comparison"}
+                    <UpscaleIcon className="h-4 w-4" />
+                    <span className="kbd kbd-sm">U</span>
                   </button>
-              )}
-
-              {hasReferences ? (
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsCompareMode(!isCompareMode)}
-                    className={`flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2.5 text-sm font-semibold transition-colors hover:text-white hover:border-[var(--text-muted)] ${
-                      isCompareMode
-                        ? "bg-[var(--bg-subtle)] text-white border-[var(--text-muted)]"
-                        : "bg-[var(--bg-input)] text-[var(--text-secondary)]"
-                    }`}
-                  >
-                    <span className="text-lg leading-none">⇄</span>
-                    {isCompareMode ? "Exit Compare" : "Compare"}
-                  </button>
-
-                  {isCompareMode && entry.inputImages.length > 1 ? (
-                    <div className="grid grid-cols-4 gap-2 rounded-lg bg-[var(--bg-subtle)] p-2">
-                      {entry.inputImages.map((img, idx) => (
+                  {showUpscaleMenu && (
+                    <div className="absolute bottom-full right-0 mb-2 bg-[var(--bg-panel)] border border-[var(--border-highlight)] rounded-lg shadow-xl overflow-hidden z-10 min-w-[140px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      <div className="p-2 border-b border-[var(--border-subtle)]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Upscale to</span>
+                      </div>
+                      {upscaleOptions.map((targetQuality) => (
                         <button
+                          key={targetQuality}
                           type="button"
-                          key={img.id || idx}
-                          onClick={() => setSelectedReferenceIndex(idx)}
-                          className={`relative aspect-square overflow-hidden rounded-md border-2 transition-all ${
-                            selectedReferenceIndex === idx
-                              ? "border-[var(--accent-primary)] opacity-100"
-                              : "border-transparent opacity-50 hover:opacity-100"
-                          }`}
-                          title={img.name}
+                          onClick={() => {
+                            onUpscale?.(targetQuality);
+                            setShowUpscaleMenu(false);
+                          }}
+                          className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition-colors"
                         >
-                          <Image src={img.url} alt={img.name} fill className="object-cover" sizes="60px" />
+                          <span>{getQualityLabel(targetQuality)}</span>
+                          <span className="text-[10px] text-[var(--text-muted)]">
+                            {targetQuality === "2k" ? "2048px" : "4096px"}
+                          </span>
                         </button>
                       ))}
                     </div>
-                  ) : null}
+                  )}
                 </div>
-              ) : null}
+              )}
+            </div>
 
-              {onEdit ? (
+            {isCompareMode && hasReferences && (
+              <button
+                type="button"
+                onClick={handleDownloadComparison}
+                disabled={isDownloadingComparison}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--bg-subtle)] border border-[var(--border-subtle)] px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:bg-[var(--bg-input)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDownloadingComparison ? <SpinnerIcon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
+                {isDownloadingComparison ? "Saving..." : "Save Comparison"}
+              </button>
+            )}
+
+            {hasReferences ? (
+              <div className="flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={onEdit}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-2.5 text-sm font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-white hover:border-[var(--text-muted)]"
+                  onClick={() => setIsCompareMode(!isCompareMode)}
+                  className={`flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2.5 text-sm font-semibold transition-colors hover:text-white hover:border-[var(--text-muted)] ${isCompareMode
+                    ? "bg-[var(--bg-subtle)] text-white border-[var(--text-muted)]"
+                    : "bg-[var(--bg-input)] text-[var(--text-secondary)]"
+                    }`}
                 >
-                  <PlusIcon className="h-4 w-4" />
-                  Use as Reference
+                  <span className="text-lg leading-none">⇄</span>
+                  {isCompareMode ? "Exit Compare" : "Compare"}
                 </button>
-              ) : null}
 
-              {/* Keyboard Shortcuts Hint */}
-              <div className="flex items-center justify-center gap-4 pt-2 text-[10px] text-[var(--text-muted)]">
-                <span className="flex items-center gap-1">
-                  <span className="kbd kbd-sm">←</span>
-                  <span className="kbd kbd-sm">→</span>
-                  <span className="ml-1">Navigate</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="kbd kbd-sm">L</span>
-                  <span className="ml-1">Like</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="kbd kbd-sm">?</span>
-                  <span className="ml-1">More</span>
-                </span>
+                {isCompareMode && entry.inputImages.length > 1 ? (
+                  <div className="grid grid-cols-4 gap-2 rounded-lg bg-[var(--bg-subtle)] p-2">
+                    {entry.inputImages.map((img, idx) => (
+                      <button
+                        type="button"
+                        key={img.id || idx}
+                        onClick={() => setSelectedReferenceIndex(idx)}
+                        className={`relative aspect-square overflow-hidden rounded-md border-2 transition-all ${selectedReferenceIndex === idx
+                          ? "border-[var(--accent-primary)] opacity-100"
+                          : "border-transparent opacity-50 hover:opacity-100"
+                          }`}
+                        title={img.name}
+                      >
+                        <Image src={img.url} alt={img.name} fill className="object-cover" sizes="60px" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-           </div>
+            ) : null}
+
+            {onEdit ? (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-2.5 text-sm font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-white hover:border-[var(--text-muted)]"
+              >
+                <PlusIcon className="h-4 w-4" />
+                Use as Reference
+              </button>
+            ) : null}
+
+            {/* Keyboard Shortcuts Hint */}
+            <div className="flex items-center justify-center gap-4 pt-2 text-[10px] text-[var(--text-muted)]">
+              <span className="flex items-center gap-1">
+                <span className="kbd kbd-sm">←</span>
+                <span className="kbd kbd-sm">→</span>
+                <span className="ml-1">Navigate</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="kbd kbd-sm">L</span>
+                <span className="ml-1">Like</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="kbd kbd-sm">?</span>
+                <span className="ml-1">More</span>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

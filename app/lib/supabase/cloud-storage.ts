@@ -580,3 +580,325 @@ export async function getAllApiKeyInfos(): Promise<Record<ApiKeyType, ApiKeyInfo
     openai: { hasKey: !!data.openai_key, hint: data.openai_hint },
   };
 }
+
+// ============================================
+// Image Storage Functions
+// ============================================
+
+const GENERATIONS_BUCKET = "generations";
+const PROMPT_ATTACHMENTS_BUCKET = "prompt-attachments";
+
+/**
+ * Check if a string is a base64 data URL
+ */
+function isBase64DataUrl(str: string): boolean {
+  return str.startsWith("data:image/");
+}
+
+/**
+ * Check if a string is a blob URL
+ */
+function isBlobUrl(str: string): boolean {
+  return str.startsWith("blob:");
+}
+
+/**
+ * Check if image needs to be uploaded (is local data, not already a Supabase URL)
+ */
+function needsUpload(imageUrl: string, supabaseUrl: string): boolean {
+  // Already a Supabase storage URL
+  if (imageUrl.includes(supabaseUrl) && imageUrl.includes("/storage/")) {
+    return false;
+  }
+  // Base64 data URL - needs upload
+  if (isBase64DataUrl(imageUrl)) {
+    return true;
+  }
+  // Blob URL - needs upload
+  if (isBlobUrl(imageUrl)) {
+    return true;
+  }
+  // External URL (from generation API) - we could optionally re-upload these
+  // For now, keep external URLs as-is
+  return false;
+}
+
+/**
+ * Convert base64 data URL to Blob
+ */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64Data] = dataUrl.split(",");
+  const mimeMatch = header.match(/data:([^;]+)/);
+  const mimeType = mimeMatch ? mimeMatch[1] : "image/png";
+  const binaryString = atob(base64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+/**
+ * Get file extension from mime type
+ */
+function getExtensionFromMime(mimeType: string): string {
+  const map: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+  };
+  return map[mimeType] || "png";
+}
+
+/**
+ * Upload a single image to Supabase Storage
+ */
+export async function uploadImage(
+  imageData: string | Blob,
+  bucket: string,
+  path: string
+): Promise<string> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  let blob: Blob;
+  let extension = "png";
+
+  if (typeof imageData === "string") {
+    if (isBase64DataUrl(imageData)) {
+      blob = dataUrlToBlob(imageData);
+      const mimeMatch = imageData.match(/data:([^;]+)/);
+      if (mimeMatch) {
+        extension = getExtensionFromMime(mimeMatch[1]);
+      }
+    } else {
+      throw new Error("Invalid image data: expected base64 data URL or Blob");
+    }
+  } else {
+    blob = imageData;
+    extension = getExtensionFromMime(blob.type);
+  }
+
+  const filePath = `${user.id}/${path}.${extension}`;
+
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(filePath, blob, {
+      contentType: blob.type,
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("Failed to upload image:", error);
+    throw error;
+  }
+
+  // Get public URL
+  const { data: urlData } = supabase.storage
+    .from(bucket)
+    .getPublicUrl(data.path);
+
+  return urlData.publicUrl;
+}
+
+/**
+ * Upload generation images to Supabase Storage
+ * Returns updated image URLs (uploaded ones replaced with Supabase URLs)
+ */
+export async function uploadGenerationImages(
+  generationId: string,
+  images: string[]
+): Promise<string[]> {
+  const supabase = createClient();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+
+  const uploadedUrls: string[] = [];
+
+  for (let i = 0; i < images.length; i++) {
+    const imageUrl = images[i];
+
+    if (!imageUrl || imageUrl.trim() === "") {
+      uploadedUrls.push(imageUrl);
+      continue;
+    }
+
+    if (needsUpload(imageUrl, supabaseUrl)) {
+      try {
+        const path = `${generationId}/${i}`;
+        const newUrl = await uploadImage(imageUrl, GENERATIONS_BUCKET, path);
+        uploadedUrls.push(newUrl);
+        console.log(`Uploaded image ${i} for generation ${generationId}`);
+      } catch (error) {
+        console.error(`Failed to upload image ${i}:`, error);
+        // Keep original URL on failure
+        uploadedUrls.push(imageUrl);
+      }
+    } else {
+      // Keep existing URL
+      uploadedUrls.push(imageUrl);
+    }
+  }
+
+  return uploadedUrls;
+}
+
+/**
+ * Upload prompt attachment to Supabase Storage
+ */
+export async function uploadPromptAttachment(
+  promptId: string,
+  imageData: string,
+  index: number
+): Promise<string> {
+  const path = `${promptId}/${index}`;
+  return uploadImage(imageData, PROMPT_ATTACHMENTS_BUCKET, path);
+}
+
+/**
+ * Delete generation images from Supabase Storage
+ */
+export async function deleteGenerationImages(generationId: string): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const folderPath = `${user.id}/${generationId}`;
+
+  // List all files in the generation folder
+  const { data: files, error: listError } = await supabase.storage
+    .from(GENERATIONS_BUCKET)
+    .list(folderPath);
+
+  if (listError) {
+    console.error("Failed to list generation images:", listError);
+    return;
+  }
+
+  if (files && files.length > 0) {
+    const filePaths = files.map((f) => `${folderPath}/${f.name}`);
+    const { error: deleteError } = await supabase.storage
+      .from(GENERATIONS_BUCKET)
+      .remove(filePaths);
+
+    if (deleteError) {
+      console.error("Failed to delete generation images:", deleteError);
+    }
+  }
+}
+
+/**
+ * Save generations with image upload
+ * This uploads base64 images to Supabase Storage before saving metadata
+ */
+export async function saveGenerationsWithImages(
+  generations: Generation[],
+  uploadImages: boolean = true
+): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const processedGenerations: Generation[] = [];
+
+  for (const gen of generations) {
+    let images = gen.images;
+
+    // Upload images if enabled and there are base64 images
+    if (uploadImages && images.some((img) => isBase64DataUrl(img))) {
+      try {
+        images = await uploadGenerationImages(gen.id, images);
+      } catch (error) {
+        console.error(`Failed to upload images for generation ${gen.id}:`, error);
+        // Continue with original images
+      }
+    }
+
+    processedGenerations.push({
+      ...gen,
+      images,
+    });
+  }
+
+  // Save to database
+  const rows = processedGenerations.map((gen) => toDbFormat(gen, user.id));
+
+  const { error } = await supabase
+    .from("generations")
+    .upsert(rows, { onConflict: "id" });
+
+  if (error) {
+    console.error("Failed to save generations to cloud:", error);
+    throw error;
+  }
+}
+
+/**
+ * Delete generation with its images
+ */
+export async function deleteGenerationWithImages(generationId: string): Promise<void> {
+  // Delete images first
+  try {
+    await deleteGenerationImages(generationId);
+  } catch (error) {
+    console.error("Failed to delete generation images:", error);
+  }
+
+  // Then delete the database record
+  await deleteGenerationFromCloud(generationId);
+}
+
+/**
+ * Get storage usage for current user
+ */
+export async function getStorageUsage(): Promise<{ used: number; limit: number }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { used: 0, limit: 1073741824 }; // 1GB default limit
+  }
+
+  // List files in user's folder
+  const { data: genFiles } = await supabase.storage
+    .from(GENERATIONS_BUCKET)
+    .list(user.id, { limit: 1000 });
+
+  const { data: attachFiles } = await supabase.storage
+    .from(PROMPT_ATTACHMENTS_BUCKET)
+    .list(user.id, { limit: 1000 });
+
+  let totalSize = 0;
+
+  // Sum up file sizes (metadata includes size)
+  if (genFiles) {
+    for (const file of genFiles) {
+      if (file.metadata?.size) {
+        totalSize += file.metadata.size;
+      }
+    }
+  }
+
+  if (attachFiles) {
+    for (const file of attachFiles) {
+      if (file.metadata?.size) {
+        totalSize += file.metadata.size;
+      }
+    }
+  }
+
+  return {
+    used: totalSize,
+    limit: 1073741824, // 1GB for free tier
+  };
+}

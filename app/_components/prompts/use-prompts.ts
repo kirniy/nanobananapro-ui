@@ -6,7 +6,8 @@ import {
     updatePrompt as apiUpdatePrompt,
     deletePrompt as apiDeletePrompt,
     createCategory as apiCreateCategory,
-    deleteCategory as apiDeleteCategory
+    deleteCategory as apiDeleteCategory,
+    updateCategory as apiUpdateCategory
 } from "@/app/lib/prompts-api";
 import type { Prompt, PromptCategory, CreatePromptInput, UpdatePromptInput } from "./types";
 import { useAuth } from "../auth/auth-context";
@@ -115,6 +116,16 @@ export function usePrompts() {
         }
     }, [fetchData]);
 
+    const updateCategory = useCallback(async (id: string, name: string, color?: string) => {
+        try {
+            await apiUpdateCategory(id, name, color);
+            await fetchData();
+        } catch (err) {
+            console.error("Failed to update category:", err);
+            throw err;
+        }
+    }, [fetchData]);
+
     return {
         prompts,
         categories,
@@ -126,6 +137,7 @@ export function usePrompts() {
         deletePrompt,
         toggleFavorite,
         createCategory,
-        deleteCategory
+        deleteCategory,
+        updateCategory
     };
 }
