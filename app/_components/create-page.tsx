@@ -19,6 +19,8 @@ import { generateSmartFilename } from "./create-page/utils";
 import { KeyboardShortcutsPanel } from "./create-page/keyboard-shortcuts-panel";
 import { UserMenu } from "./auth/user-menu";
 import { useCloudSync } from "./create-page/use-cloud-sync";
+import { PromptsView } from "./prompts/prompts-view";
+import { useAuth } from "./auth/auth-context";
 
 const defaultPrompt =
   "Cinematic shot of a futuristic city at night, neon lights, rain reflections, highly detailed, 8k resolution";
@@ -153,28 +155,29 @@ function findClosestAspect(width: number, height: number): AspectKey {
     const parts = key.split("-");
     // format: orientation-w-h
     if (parts.length < 3) continue;
-    
+
     const w = parseInt(parts[1], 10);
     const h = parseInt(parts[2], 10);
-    
+
     if (isNaN(w) || isNaN(h)) continue;
-    
+
     const targetRatio = w / h;
     const diff = Math.abs(ratio - targetRatio);
-    
+
     if (diff < minDiff) {
       minDiff = diff;
       closestAspect = key;
     }
   }
-  
+
   return closestAspect;
 }
 
 
 
 export function CreatePage() {
-  const [view, setView] = useState<"create" | "gallery">("create");
+  const { user } = useAuth();
+  const [view, setView] = useState<"create" | "gallery" | "prompts">("create");
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [aspect, setAspect] = useState<AspectKey>(defaultAspect);
   const [quality, setQuality] = useState<QualityKey>(defaultQuality);
@@ -325,15 +328,15 @@ export function CreatePage() {
         }
       } catch (error) {
         console.error("Unable to restore Seedream state", error);
-    } finally {
-      if (!cancelled) {
-        storageHydratedRef.current = true;
-        if (!pendingHydratedRef.current) {
-          pendingReconciledRef.current = true;
+      } finally {
+        if (!cancelled) {
+          storageHydratedRef.current = true;
+          if (!pendingHydratedRef.current) {
+            pendingReconciledRef.current = true;
+          }
         }
       }
-    }
-  };
+    };
 
     loadState();
 
@@ -606,8 +609,8 @@ export function CreatePage() {
           addedCount = nextItems.length;
           // Auto-set aspect based on first attachment if it's the first batch
           if (previous.length === 0 && nextItems[0].width && nextItems[0].height) {
-             const closest = findClosestAspect(nextItems[0].width, nextItems[0].height);
-             setAspect(closest);
+            const closest = findClosestAspect(nextItems[0].width, nextItems[0].height);
+            setAspect(closest);
           }
 
           return [...previous, ...nextItems];
@@ -666,12 +669,12 @@ export function CreatePage() {
           ...previous,
           { id: createId("attachment"), name, url: resolvedUrl, kind: "remote" as const, width, height },
         ];
-        
+
         if (previous.length === 0 && width && height) {
-             const closest = findClosestAspect(width, height);
-             setAspect(closest);
+          const closest = findClosestAspect(width, height);
+          setAspect(closest);
         }
-        
+
         return next;
       });
       clearAttachmentError();
@@ -699,7 +702,7 @@ export function CreatePage() {
     const pendingId = createId("pending");
     const pendingSize = calculateImageSize(aspect, quality);
     const inputImageSnapshot = attachmentInputImages.map((image) => ({ ...image }));
-    
+
     const pendingGeneration: Generation = {
       id: pendingId,
       prompt,
@@ -729,7 +732,7 @@ export function CreatePage() {
 
     const trimmedApiKey = apiKey.trim();
     const trimmedGeminiApiKey = geminiApiKey.trim();
-    
+
     debugLog("submit:request", {
       pendingId,
       provider,
@@ -1179,31 +1182,40 @@ export function CreatePage() {
 
       {/* Main Content */}
       <div className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-8 px-6 pb-48 pt-10 lg:px-10">
-        
+
         {/* Navigation Tabs */}
         <div className="pointer-events-none sticky top-4 z-30 flex items-center justify-between">
           <div className="w-24" /> {/* Spacer for centering */}
           <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-[var(--bg-subtle)] p-1 border border-[var(--border-subtle)] shadow-lg shadow-black/20">
             <button
               onClick={() => setView("create")}
-              className={`rounded-full px-6 py-2 text-xs font-bold uppercase tracking-wide transition-all ${
-                view === "create"
-                  ? "bg-[var(--text-primary)] text-black shadow-sm"
-                  : "text-[var(--text-secondary)] hover:text-white"
-              }`}
+              className={`rounded-full px-6 py-2 text-xs font-bold uppercase tracking-wide transition-all ${view === "create"
+                ? "bg-[var(--text-primary)] text-black shadow-sm"
+                : "text-[var(--text-secondary)] hover:text-white"
+                }`}
             >
               Create
             </button>
             <button
               onClick={() => setView("gallery")}
-              className={`rounded-full px-6 py-2 text-xs font-bold uppercase tracking-wide transition-all ${
-                view === "gallery"
-                  ? "bg-[var(--text-primary)] text-black shadow-sm"
-                  : "text-[var(--text-secondary)] hover:text-white"
-              }`}
+              className={`rounded-full px-6 py-2 text-xs font-bold uppercase tracking-wide transition-all ${view === "gallery"
+                ? "bg-[var(--text-primary)] text-black shadow-sm"
+                : "text-[var(--text-secondary)] hover:text-white"
+                }`}
             >
               Gallery
             </button>
+            {user && (
+              <button
+                onClick={() => setView("prompts")}
+                className={`rounded-full px-6 py-2 text-xs font-bold uppercase tracking-wide transition-all ${view === "prompts"
+                  ? "bg-[var(--text-primary)] text-black shadow-sm"
+                  : "text-[var(--text-secondary)] hover:text-white"
+                  }`}
+              >
+                Prompts
+              </button>
+            )}
           </div>
           <div className="pointer-events-auto w-24 flex justify-end">
             <UserMenu />
@@ -1214,27 +1226,27 @@ export function CreatePage() {
           <main className="flex flex-1 flex-col gap-12">
             {hasGenerations ? (
               groupedGenerations.map((group) => (
-              <GenerationGroup
-                key={group.key}
-                label={group.label}
-                generations={group.items}
-                pendingIdSet={pendingIdSet}
-                errorGenerationId={errorGenerationId}
-                errorMessage={error}
-                onExpand={handleExpand}
-                onUsePrompt={handleUsePrompt}
-                onPreviewInputImage={handlePreviewInputImage}
-                onDeleteGeneration={handleDeleteGeneration}
-                onRetryGeneration={handleRetryGeneration}
-                favorites={favorites}
-                onToggleFavorite={handleToggleFavorite}
-              />
-            ))
-          ) : (
-            <EmptyState />
-          )}
+                <GenerationGroup
+                  key={group.key}
+                  label={group.label}
+                  generations={group.items}
+                  pendingIdSet={pendingIdSet}
+                  errorGenerationId={errorGenerationId}
+                  errorMessage={error}
+                  onExpand={handleExpand}
+                  onUsePrompt={handleUsePrompt}
+                  onPreviewInputImage={handlePreviewInputImage}
+                  onDeleteGeneration={handleDeleteGeneration}
+                  onRetryGeneration={handleRetryGeneration}
+                  favorites={favorites}
+                  onToggleFavorite={handleToggleFavorite}
+                />
+              ))
+            ) : (
+              <EmptyState />
+            )}
           </main>
-        ) : (
+        ) : view === "gallery" ? (
           <GalleryView
             generations={generations}
             onExpand={handleExpand}
@@ -1242,40 +1254,47 @@ export function CreatePage() {
             onToggleFavorite={handleToggleFavorite}
             onUsePrompt={handleUsePrompt}
           />
+        ) : (
+          <PromptsView
+            onUsePrompt={(content: string) => {
+              setPrompt(content);
+              setView("create");
+            }}
+          />
         )}
       </div>
-      
+
       {/* Floating Header at Bottom (Only in Create View) */}
       {view === "create" && (
         <div className="fixed bottom-8 left-0 right-0 z-40 px-6 pointer-events-none">
           <div className="pointer-events-auto mx-auto w-full max-w-3xl">
-              <Header
-                prompt={prompt}
-                aspect={aspect}
-                quality={quality}
-                outputFormat={outputFormat}
-                provider={provider}
-                imageCount={imageCount}
-                apiKey={apiKey}
-                geminiApiKey={geminiApiKey}
-                isBudgetLocked={false}
-                isSettingsOpen={isSettingsOpen}
-                onSubmit={handleSubmit}
-                onPromptChange={setPrompt}
-                onAspectSelect={handleAspectSelect}
-                onQualityChange={setQuality}
-                onOutputFormatChange={setOutputFormat}
-                onProviderChange={setProvider}
-                onImageCountChange={setImageCount}
-                onApiKeyChange={setApiKey}
-                onGeminiApiKeyChange={setGeminiApiKey}
-                onToggleSettings={setIsSettingsOpen}
-                attachments={attachments}
-                onAddAttachments={handleAddAttachments}
-                onRemoveAttachment={handleRemoveAttachment}
-                onPreviewAttachment={handlePreviewAttachment}
-                isAttachmentLimitReached={isAttachmentLimitReached}
-              />
+            <Header
+              prompt={prompt}
+              aspect={aspect}
+              quality={quality}
+              outputFormat={outputFormat}
+              provider={provider}
+              imageCount={imageCount}
+              apiKey={apiKey}
+              geminiApiKey={geminiApiKey}
+              isBudgetLocked={false}
+              isSettingsOpen={isSettingsOpen}
+              onSubmit={handleSubmit}
+              onPromptChange={setPrompt}
+              onAspectSelect={handleAspectSelect}
+              onQualityChange={setQuality}
+              onOutputFormatChange={setOutputFormat}
+              onProviderChange={setProvider}
+              onImageCountChange={setImageCount}
+              onApiKeyChange={setApiKey}
+              onGeminiApiKeyChange={setGeminiApiKey}
+              onToggleSettings={setIsSettingsOpen}
+              attachments={attachments}
+              onAddAttachments={handleAddAttachments}
+              onRemoveAttachment={handleRemoveAttachment}
+              onPreviewAttachment={handlePreviewAttachment}
+              isAttachmentLimitReached={isAttachmentLimitReached}
+            />
           </div>
         </div>
       )}
