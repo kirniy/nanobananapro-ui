@@ -342,7 +342,7 @@ const ImageTile = memo(function ImageTile({
           {/* Gradient overlay for visibility */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
           {/* Action buttons */}
-          <div data-action-bar className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 p-1 bg-black/60 backdrop-blur-sm rounded-lg border border-white/10 pointer-events-auto">
+          <div data-action-bar className="absolute bottom-2 right-2 flex gap-1 p-1 bg-black/60 backdrop-blur-sm rounded-lg border border-white/10 pointer-events-auto">
             {/* Favorite Button */}
             <button
               type="button"

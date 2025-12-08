@@ -476,8 +476,10 @@ img {
 .quick-actions-bar {
   position: absolute;
   bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 8px;
+  right: 8px;
+  left: auto;
+  transform: none;
   display: flex;
   gap: 4px;
   padding: 4px;
