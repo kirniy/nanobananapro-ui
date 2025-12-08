@@ -93,6 +93,38 @@ export interface Database {
           updated_at?: string;
         };
       };
+      user_api_keys: {
+        Row: {
+          user_id: string;
+          gemini_key: string | null;
+          replicate_key: string | null;
+          openai_key: string | null;
+          gemini_hint: string | null;
+          replicate_hint: string | null;
+          openai_hint: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          gemini_key?: string | null;
+          replicate_key?: string | null;
+          openai_key?: string | null;
+          gemini_hint?: string | null;
+          replicate_hint?: string | null;
+          openai_hint?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          gemini_key?: string | null;
+          replicate_key?: string | null;
+          openai_key?: string | null;
+          gemini_hint?: string | null;
+          replicate_hint?: string | null;
+          openai_hint?: string | null;
+          updated_at?: string;
+        };
+      };
     };
   };
 }
