@@ -27,6 +27,10 @@ export async function getCategories() {
 export async function createPrompt(input: CreatePromptInput) {
     const supabase = createClient();
 
+    // Get current user for RLS
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
     // 1. Create the prompt
     const { data: promptData, error: promptError } = await supabase
         .from("prompts")
@@ -36,6 +40,7 @@ export async function createPrompt(input: CreatePromptInput) {
             content: input.content,
             tags: input.tags,
             category_id: input.category_id,
+            user_id: user.id,
         })
         .select()
         .single();
@@ -93,9 +98,14 @@ export async function deletePrompt(id: string) {
 
 export async function createCategory(name: string, color?: string) {
     const supabase = createClient();
+
+    // Get current user for RLS
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
     const { data, error } = await supabase
         .from("prompt_categories")
-        .insert({ name, color })
+        .insert({ name, color, user_id: user.id })
         .select()
         .single();
 
