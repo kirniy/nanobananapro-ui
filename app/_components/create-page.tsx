@@ -212,7 +212,7 @@ export function CreatePage() {
 
   const isAttachmentLimitReached = attachments.length >= MAX_ATTACHMENTS;
 
-  // Cloud sync - syncs generations and favorites to Supabase when user is authenticated
+  // Cloud sync - syncs generations and favorites to VPS when user is authenticated
   const { deleteFromCloud, isCloudEnabled, syncImages, setSyncImages } = useCloudSync({
     generations,
     favorites,
@@ -1027,7 +1027,7 @@ export function CreatePage() {
         pendingGenerations.find((generation) => generation.id === generationId);
 
       void deleteGenerationData(generationId, generationToDelete);
-      void deleteFromCloud(generationId); // Also delete from Supabase
+      void deleteFromCloud(generationId); // Also delete from VPS cloud
 
       setGenerations((previous) => previous.filter((generation) => generation.id !== generationId));
       setPendingGenerations((previous) => previous.filter((generation) => generation.id !== generationId));

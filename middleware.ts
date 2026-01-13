@@ -1,8 +1,9 @@
-import { type NextRequest } from "next/server";
-import { updateSession } from "@/app/lib/supabase/middleware";
+import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+export async function middleware(_request: NextRequest) {
+  // NextAuth handles session management automatically via cookies
+  // No middleware needed for basic auth flow
+  return NextResponse.next();
 }
 
 export const config = {
@@ -12,8 +13,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
+     * - api/auth (NextAuth routes)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

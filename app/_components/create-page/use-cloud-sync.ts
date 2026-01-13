@@ -23,7 +23,7 @@ type UseCloudSyncOptions = {
 const SYNC_IMAGES_KEY = "nano-banana-sync-images";
 
 /**
- * Hook to sync generations and favorites with Supabase when user is authenticated
+ * Hook to sync generations and favorites with cloud (VPS) when user is authenticated
  */
 export function useCloudSync({
   generations,

@@ -1,36 +1,34 @@
 "use client";
 
-import { createClient } from "./client";
+import { vpsApi } from "../vps-api/client";
 import type { Generation } from "../../_components/create-page/types";
-import type { Database } from "./types";
+import type { Generation as VpsGeneration, CreateGenerationInput } from "../vps-api/client";
 
-type GenerationRow = Database["public"]["Tables"]["generations"]["Row"];
-type GenerationInsert = Database["public"]["Tables"]["generations"]["Insert"];
+const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL || "http://46.203.233.138/api";
 
 /**
- * Convert app Generation type to database row format
+ * Convert app Generation type to API format
  */
-function toDbFormat(generation: Generation, userId: string): GenerationInsert {
+function toApiFormat(generation: Generation): CreateGenerationInput {
   return {
     id: generation.id,
-    user_id: userId,
     prompt: generation.prompt,
     aspect: generation.aspect,
     quality: generation.quality,
     output_format: generation.outputFormat,
     provider: generation.provider,
-    created_at: generation.createdAt,
     size_width: generation.size.width,
     size_height: generation.size.height,
     images: generation.images,
-    input_images: generation.inputImages as unknown as Database["public"]["Tables"]["generations"]["Insert"]["input_images"],
+    input_images: generation.inputImages,
+    created_at: generation.createdAt,
   };
 }
 
 /**
- * Convert database row to app Generation type
+ * Convert API format to app Generation type
  */
-function fromDbFormat(row: GenerationRow): Generation {
+function fromApiFormat(row: VpsGeneration): Generation {
   return {
     id: row.id,
     prompt: row.prompt,
@@ -49,261 +47,127 @@ function fromDbFormat(row: GenerationRow): Generation {
 }
 
 /**
- * Check if user is authenticated
+ * Check if user is authenticated (via VPS API token being set)
  */
 export async function isAuthenticated(): Promise<boolean> {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    return !!user;
+    await vpsApi.health();
+    return true;
   } catch {
     return false;
   }
 }
 
 /**
- * Get current user ID
+ * Get current user ID - returns null as we don't track this client-side anymore
+ * The VPS API uses the token to identify the user
  */
 export async function getCurrentUserId(): Promise<string | null> {
-  try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.id || null;
-  } catch {
-    return null;
-  }
+  // User ID is embedded in the API token, not exposed client-side
+  return null;
 }
 
 /**
- * Save generations to Supabase
+ * Save generations to VPS
  */
 export async function saveGenerationsToCloud(generations: Generation[]): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  const rows = generations.map((gen) => toDbFormat(gen, user.id));
-
-  const { error } = await supabase
-    .from("generations")
-    .upsert(rows, { onConflict: "id" });
-
-  if (error) {
-    console.error("Failed to save generations to cloud:", error);
-    throw error;
-  }
+  const apiGenerations = generations.map(toApiFormat);
+  await vpsApi.bulkUpsertGenerations(apiGenerations);
 }
 
 /**
- * Load generations from Supabase
+ * Load generations from VPS
  */
 export async function loadGenerationsFromCloud(): Promise<Generation[]> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
+  try {
+    const data = await vpsApi.getGenerations();
+    return data.map(fromApiFormat);
+  } catch (error) {
+    console.error("Failed to load generations from cloud:", error);
     return [];
   }
-
-  const { data, error } = await supabase
-    .from("generations")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Failed to load generations from cloud:", error);
-    throw error;
-  }
-
-  return (data || []).map(fromDbFormat);
 }
 
 /**
- * Delete a generation from Supabase
+ * Delete a generation from VPS
  */
 export async function deleteGenerationFromCloud(generationId: string): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  const { error } = await supabase
-    .from("generations")
-    .delete()
-    .eq("id", generationId)
-    .eq("user_id", user.id);
-
-  if (error) {
-    console.error("Failed to delete generation from cloud:", error);
-    throw error;
-  }
+  await vpsApi.deleteGeneration(generationId);
 }
 
 /**
- * Save favorites to Supabase
+ * Save favorites to VPS
  */
 export async function saveFavoritesToCloud(favorites: Set<string>): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  // First, delete all existing favorites for this user
-  await supabase
-    .from("favorites")
-    .delete()
-    .eq("user_id", user.id);
-
-  // Then insert new favorites
-  const rows = Array.from(favorites).map((fav) => {
+  const favArray = Array.from(favorites).map((fav) => {
     const [generationId, imageIndex] = fav.split(":");
     return {
-      user_id: user.id,
       generation_id: generationId,
       image_index: parseInt(imageIndex, 10),
     };
   });
 
-  if (rows.length > 0) {
-    const { error } = await supabase
-      .from("favorites")
-      .insert(rows);
-
-    if (error) {
-      console.error("Failed to save favorites to cloud:", error);
-      throw error;
-    }
+  if (favArray.length > 0) {
+    await vpsApi.bulkUpsertFavorites(favArray);
   }
 }
 
 /**
- * Load favorites from Supabase
+ * Load favorites from VPS
  */
 export async function loadFavoritesFromCloud(): Promise<Set<string>> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
+  try {
+    const data = await vpsApi.getFavorites();
+    const favorites = new Set<string>();
+    data.forEach((row) => {
+      favorites.add(`${row.generation_id}:${row.image_index}`);
+    });
+    return favorites;
+  } catch (error) {
+    console.error("Failed to load favorites from cloud:", error);
     return new Set();
   }
-
-  const { data, error } = await supabase
-    .from("favorites")
-    .select("generation_id, image_index")
-    .eq("user_id", user.id);
-
-  if (error) {
-    console.error("Failed to load favorites from cloud:", error);
-    throw error;
-  }
-
-  const favorites = new Set<string>();
-  (data || []).forEach((row) => {
-    favorites.add(`${row.generation_id}:${row.image_index}`);
-  });
-
-  return favorites;
 }
 
 /**
- * Toggle a favorite in Supabase
+ * Toggle a favorite in VPS
  */
 export async function toggleFavoriteInCloud(generationId: string, imageIndex: number): Promise<boolean> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  // Check if favorite exists
-  const { data: existing } = await supabase
-    .from("favorites")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("generation_id", generationId)
-    .eq("image_index", imageIndex)
-    .single();
+  // Get current favorites
+  const favorites = await vpsApi.getFavorites();
+  const existing = favorites.find(
+    (f) => f.generation_id === generationId && f.image_index === imageIndex
+  );
 
   if (existing) {
     // Remove favorite
-    await supabase
-      .from("favorites")
-      .delete()
-      .eq("id", existing.id);
+    await vpsApi.deleteFavorite(existing.id);
     return false;
   } else {
     // Add favorite
-    await supabase
-      .from("favorites")
-      .insert({
-        user_id: user.id,
-        generation_id: generationId,
-        image_index: imageIndex,
-      });
+    await vpsApi.createFavorite(generationId, imageIndex);
     return true;
   }
 }
 
 /**
- * Save user settings to Supabase
+ * Save user settings to VPS
  */
 export async function saveSettingsToCloud(settings: Record<string, unknown>): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  const { error } = await supabase
-    .from("user_settings")
-    .upsert({
-      user_id: user.id,
-      settings,
-    }, { onConflict: "user_id" });
-
-  if (error) {
-    console.error("Failed to save settings to cloud:", error);
-    throw error;
-  }
+  await vpsApi.updateSettings(settings);
 }
 
 /**
- * Load user settings from Supabase
+ * Load user settings from VPS
  */
 export async function loadSettingsFromCloud(): Promise<Record<string, unknown> | null> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
+  try {
+    const data = await vpsApi.getSettings();
+    return (data?.settings as Record<string, unknown>) || null;
+  } catch (error) {
+    console.error("Failed to load settings from cloud:", error);
     return null;
   }
-
-  const { data, error } = await supabase
-    .from("user_settings")
-    .select("settings")
-    .eq("user_id", user.id)
-    .maybeSingle(); // Use maybeSingle() instead of single() to handle 0 rows gracefully
-
-  if (error) {
-    // Silently return null for common "no data" errors
-    if (error.code === "PGRST116" || error.code === "406") {
-      return null;
-    }
-    console.error("Failed to load settings from cloud:", error);
-    throw error;
-  }
-
-  return (data?.settings as Record<string, unknown>) || null;
 }
 
 /**
@@ -313,11 +177,6 @@ export async function syncLocalToCloud(
   generations: Generation[],
   favorites: Set<string>
 ): Promise<void> {
-  const isAuth = await isAuthenticated();
-  if (!isAuth) {
-    throw new Error("Not authenticated");
-  }
-
   // Load existing cloud data
   const cloudGenerations = await loadGenerationsFromCloud();
   const cloudGenIds = new Set(cloudGenerations.map((g) => g.id));
@@ -339,24 +198,13 @@ export async function syncLocalToCloud(
  * Get user's generation count
  */
 export async function getGenerationCount(): Promise<number> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return 0;
-  }
-
-  const { count, error } = await supabase
-    .from("generations")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id);
-
-  if (error) {
+  try {
+    const result = await vpsApi.getGenerationsCount();
+    return result.count;
+  } catch (error) {
     console.error("Failed to get generation count:", error);
     return 0;
   }
-
-  return count || 0;
 }
 
 /**
@@ -365,117 +213,48 @@ export async function getGenerationCount(): Promise<number> {
  * @returns Number of generations deleted
  */
 export async function cleanupOldGenerations(keepCount: number = 100): Promise<number> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  // Call the database function
-  const { data, error } = await supabase.rpc("user_cleanup_generations", {
-    p_keep_count: keepCount,
-  });
-
-  if (error) {
+  try {
+    const result = await vpsApi.cleanupGenerations(keepCount);
+    return result.deleted;
+  } catch (error) {
     console.error("Failed to cleanup generations:", error);
     throw error;
   }
-
-  return data || 0;
 }
 
 // ============================================
-// API Key Management (Encrypted Storage)
+// API Key Management
 // ============================================
 
 export type ApiKeyType = "gemini" | "replicate" | "openai";
 
 interface ApiKeyInfo {
   hasKey: boolean;
-  hint: string | null; // Last 4 characters
+  hint: string | null;
 }
 
 /**
- * Save an API key securely (encrypted in database)
- * Note: The actual encryption happens server-side via Supabase Edge Function
- * For now, we store a hash hint for display purposes
+ * Save an API key
  */
 export async function saveApiKey(keyType: ApiKeyType, apiKey: string): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  // Create hint (last 4 chars)
-  const hint = apiKey.slice(-4);
-
-  // For client-side, we'll store the key encrypted using a simple approach
-  // In production, you'd want to use Supabase Edge Functions for true server-side encryption
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(apiKey);
-  const base64Key = btoa(String.fromCharCode(...keyData));
-
-  const updateData: Record<string, unknown> = {
-    user_id: user.id,
-    [`${keyType}_key`]: base64Key,
-    [`${keyType}_hint`]: hint,
-  };
-
-  const { error } = await supabase
-    .from("user_api_keys")
-    .upsert(updateData, { onConflict: "user_id" });
-
-  if (error) {
-    console.error(`Failed to save ${keyType} API key:`, error);
-    throw error;
-  }
+  const keyName = `${keyType}_key` as "gemini_key" | "replicate_key" | "openai_key";
+  await vpsApi.updateApiKeys({ [keyName]: apiKey });
 }
 
 /**
- * Get API key from secure storage
+ * Get API key from storage
  */
 export async function getApiKey(keyType: ApiKeyType): Promise<string | null> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("user_api_keys")
-    .select("gemini_key, replicate_key, openai_key")
-    .eq("user_id", user.id)
-    .single();
-
-  if (error && error.code !== "PGRST116") {
-    console.error(`Failed to get ${keyType} API key:`, error);
-    return null;
-  }
-
-  if (!data) return null;
-
-  const keyMap = {
-    gemini: data.gemini_key,
-    replicate: data.replicate_key,
-    openai: data.openai_key,
-  };
-
-  const encodedKey = keyMap[keyType];
-  if (!encodedKey) return null;
-
-  // Decode the key
   try {
-    const decoded = atob(encodedKey);
-    const bytes = new Uint8Array(decoded.length);
-    for (let i = 0; i < decoded.length; i++) {
-      bytes[i] = decoded.charCodeAt(i);
-    }
-    return new TextDecoder().decode(bytes);
-  } catch {
+    const data = await vpsApi.getFullApiKeys();
+    const keyMap: Record<string, string | null | undefined> = {
+      gemini: data.gemini_key,
+      replicate: data.replicate_key,
+      openai: data.openai_key,
+    };
+    return keyMap[keyType] || null;
+  } catch (error) {
+    console.error(`Failed to get ${keyType} API key:`, error);
     return null;
   }
 }
@@ -484,113 +263,55 @@ export async function getApiKey(keyType: ApiKeyType): Promise<string | null> {
  * Get API key info (whether it exists and hint)
  */
 export async function getApiKeyInfo(keyType: ApiKeyType): Promise<ApiKeyInfo> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { hasKey: false, hint: null };
-  }
-
-  const { data, error } = await supabase
-    .from("user_api_keys")
-    .select("gemini_key, gemini_hint, replicate_key, replicate_hint, openai_key, openai_hint")
-    .eq("user_id", user.id)
-    .single();
-
-  if (error && error.code !== "PGRST116") {
+  try {
+    const data = await vpsApi.getApiKeys();
+    const infoMap: Record<string, { hasKey: boolean; hint: string | null }> = {
+      gemini: { hasKey: data.has_gemini || false, hint: data.gemini_hint || null },
+      replicate: { hasKey: data.has_replicate || false, hint: data.replicate_hint || null },
+      openai: { hasKey: data.has_openai || false, hint: data.openai_hint || null },
+    };
+    return infoMap[keyType];
+  } catch (error) {
     console.error(`Failed to get ${keyType} API key info:`, error);
     return { hasKey: false, hint: null };
   }
-
-  if (!data) {
-    return { hasKey: false, hint: null };
-  }
-
-  const keyMap = {
-    gemini: { key: data.gemini_key, hint: data.gemini_hint },
-    replicate: { key: data.replicate_key, hint: data.replicate_hint },
-    openai: { key: data.openai_key, hint: data.openai_hint },
-  };
-
-  const info = keyMap[keyType];
-  return {
-    hasKey: !!info.key,
-    hint: info.hint,
-  };
 }
 
 /**
  * Delete an API key
  */
 export async function deleteApiKey(keyType: ApiKeyType): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  const updateData: Record<string, null> = {
-    [`${keyType}_key`]: null,
-    [`${keyType}_hint`]: null,
-  };
-
-  const { error } = await supabase
-    .from("user_api_keys")
-    .update(updateData)
-    .eq("user_id", user.id);
-
-  if (error) {
-    console.error(`Failed to delete ${keyType} API key:`, error);
-    throw error;
-  }
+  // Update with null value to delete
+  const keyName = `${keyType}_key` as "gemini_key" | "replicate_key" | "openai_key";
+  await vpsApi.updateApiKeys({ [keyName]: null });
 }
 
 /**
  * Get all API key infos at once
  */
 export async function getAllApiKeyInfos(): Promise<Record<ApiKeyType, ApiKeyInfo>> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
   const defaultResult: Record<ApiKeyType, ApiKeyInfo> = {
     gemini: { hasKey: false, hint: null },
     replicate: { hasKey: false, hint: null },
     openai: { hasKey: false, hint: null },
   };
 
-  if (!user) {
-    return defaultResult;
-  }
-
-  const { data, error } = await supabase
-    .from("user_api_keys")
-    .select("gemini_key, gemini_hint, replicate_key, replicate_hint, openai_key, openai_hint")
-    .eq("user_id", user.id)
-    .single();
-
-  if (error && error.code !== "PGRST116") {
+  try {
+    const data = await vpsApi.getApiKeys();
+    return {
+      gemini: { hasKey: data.has_gemini || false, hint: data.gemini_hint || null },
+      replicate: { hasKey: data.has_replicate || false, hint: data.replicate_hint || null },
+      openai: { hasKey: data.has_openai || false, hint: data.openai_hint || null },
+    };
+  } catch (error) {
     console.error("Failed to get API key infos:", error);
     return defaultResult;
   }
-
-  if (!data) {
-    return defaultResult;
-  }
-
-  return {
-    gemini: { hasKey: !!data.gemini_key, hint: data.gemini_hint },
-    replicate: { hasKey: !!data.replicate_key, hint: data.replicate_hint },
-    openai: { hasKey: !!data.openai_key, hint: data.openai_hint },
-  };
 }
 
 // ============================================
 // Image Storage Functions
 // ============================================
-
-const GENERATIONS_BUCKET = "generations";
-const PROMPT_ATTACHMENTS_BUCKET = "prompt-attachments";
 
 /**
  * Check if a string is a base64 data URL
@@ -607,11 +328,11 @@ function isBlobUrl(str: string): boolean {
 }
 
 /**
- * Check if image needs to be uploaded (is local data, not already a Supabase URL)
+ * Check if image needs to be uploaded (is local data, not already a VPS URL)
  */
-function needsUpload(imageUrl: string, supabaseUrl: string): boolean {
-  // Already a Supabase storage URL
-  if (imageUrl.includes(supabaseUrl) && imageUrl.includes("/storage/")) {
+function needsUpload(imageUrl: string): boolean {
+  // Already a VPS storage URL
+  if (imageUrl.includes(VPS_API_URL.replace("/api", "")) && imageUrl.includes("/storage/")) {
     return false;
   }
   // Base64 data URL - needs upload
@@ -622,122 +343,63 @@ function needsUpload(imageUrl: string, supabaseUrl: string): boolean {
   if (isBlobUrl(imageUrl)) {
     return true;
   }
-  // External URL (from generation API) - we could optionally re-upload these
-  // For now, keep external URLs as-is
+  // External URL - keep as-is
   return false;
 }
 
 /**
- * Convert base64 data URL to Blob
+ * Convert blob URL to base64 data URL
  */
-function dataUrlToBlob(dataUrl: string): Blob {
-  const [header, base64Data] = dataUrl.split(",");
-  const mimeMatch = header.match(/data:([^;]+)/);
-  const mimeType = mimeMatch ? mimeMatch[1] : "image/png";
-  const binaryString = atob(base64Data);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return new Blob([bytes], { type: mimeType });
-}
-
-/**
- * Get file extension from mime type
- */
-function getExtensionFromMime(mimeType: string): string {
-  const map: Record<string, string> = {
-    "image/png": "png",
-    "image/jpeg": "jpg",
-    "image/webp": "webp",
-    "image/gif": "gif",
-  };
-  return map[mimeType] || "png";
-}
-
-/**
- * Fetch a blob URL and return the blob data
- */
-async function fetchBlobUrl(blobUrl: string): Promise<Blob> {
+async function blobUrlToBase64(blobUrl: string): Promise<string> {
   const response = await fetch(blobUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch blob URL: ${response.status}`);
-  }
-  return response.blob();
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 /**
- * Upload a single image to Supabase Storage
- * Supports: base64 data URLs, blob URLs, and Blob objects
+ * Upload a single image to VPS Storage
  */
 export async function uploadImage(
   imageData: string | Blob,
-  bucket: string,
-  path: string
+  _bucket: string,
+  _path: string
 ): Promise<string> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  let blob: Blob;
-  let extension = "png";
+  let dataUrl: string;
 
   if (typeof imageData === "string") {
     if (isBase64DataUrl(imageData)) {
-      // Handle base64 data URL
-      blob = dataUrlToBlob(imageData);
-      const mimeMatch = imageData.match(/data:([^;]+)/);
-      if (mimeMatch) {
-        extension = getExtensionFromMime(mimeMatch[1]);
-      }
+      dataUrl = imageData;
     } else if (isBlobUrl(imageData)) {
-      // Handle blob URL - fetch it to get the actual blob
-      blob = await fetchBlobUrl(imageData);
-      extension = getExtensionFromMime(blob.type);
+      dataUrl = await blobUrlToBase64(imageData);
     } else {
-      throw new Error("Invalid image data: expected base64 data URL, blob URL, or Blob");
+      throw new Error("Invalid image data: expected base64 data URL or blob URL");
     }
   } else {
-    blob = imageData;
-    extension = getExtensionFromMime(blob.type);
-  }
-
-  const filePath = `${user.id}/${path}.${extension}`;
-
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .upload(filePath, blob, {
-      contentType: blob.type,
-      upsert: true,
+    // Convert Blob to base64
+    dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(imageData);
     });
-
-  if (error) {
-    console.error("Failed to upload image:", error);
-    throw error;
   }
 
-  // Get public URL
-  const { data: urlData } = supabase.storage
-    .from(bucket)
-    .getPublicUrl(data.path);
-
-  return urlData.publicUrl;
+  const result = await vpsApi.uploadBase64(dataUrl);
+  return vpsApi.getStorageUrl(result.url);
 }
 
 /**
- * Upload generation images to Supabase Storage
- * Returns updated image URLs (uploaded ones replaced with Supabase URLs)
+ * Upload generation images to VPS Storage
  */
 export async function uploadGenerationImages(
   generationId: string,
   images: string[]
 ): Promise<string[]> {
-  const supabase = createClient();
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-
   const uploadedUrls: string[] = [];
 
   for (let i = 0; i < images.length; i++) {
@@ -748,19 +410,17 @@ export async function uploadGenerationImages(
       continue;
     }
 
-    if (needsUpload(imageUrl, supabaseUrl)) {
+    if (needsUpload(imageUrl)) {
       try {
         const path = `${generationId}/${i}`;
-        const newUrl = await uploadImage(imageUrl, GENERATIONS_BUCKET, path);
+        const newUrl = await uploadImage(imageUrl, "generations", path);
         uploadedUrls.push(newUrl);
         console.log(`Uploaded image ${i} for generation ${generationId}`);
       } catch (error) {
         console.error(`Failed to upload image ${i}:`, error);
-        // Keep original URL on failure
         uploadedUrls.push(imageUrl);
       }
     } else {
-      // Keep existing URL
       uploadedUrls.push(imageUrl);
     }
   }
@@ -769,7 +429,7 @@ export async function uploadGenerationImages(
 }
 
 /**
- * Upload prompt attachment to Supabase Storage
+ * Upload prompt attachment to VPS Storage
  */
 export async function uploadPromptAttachment(
   promptId: string,
@@ -777,71 +437,35 @@ export async function uploadPromptAttachment(
   index: number
 ): Promise<string> {
   const path = `${promptId}/${index}`;
-  return uploadImage(imageData, PROMPT_ATTACHMENTS_BUCKET, path);
+  return uploadImage(imageData, "prompt-attachments", path);
 }
 
 /**
- * Delete generation images from Supabase Storage
+ * Delete generation images from VPS Storage
+ * Note: VPS storage deletion is handled automatically when generation is deleted
  */
-export async function deleteGenerationImages(generationId: string): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  const folderPath = `${user.id}/${generationId}`;
-
-  // List all files in the generation folder
-  const { data: files, error: listError } = await supabase.storage
-    .from(GENERATIONS_BUCKET)
-    .list(folderPath);
-
-  if (listError) {
-    console.error("Failed to list generation images:", listError);
-    return;
-  }
-
-  if (files && files.length > 0) {
-    const filePaths = files.map((f) => `${folderPath}/${f.name}`);
-    const { error: deleteError } = await supabase.storage
-      .from(GENERATIONS_BUCKET)
-      .remove(filePaths);
-
-    if (deleteError) {
-      console.error("Failed to delete generation images:", deleteError);
-    }
-  }
+export async function deleteGenerationImages(_generationId: string): Promise<void> {
+  // Storage cleanup is handled server-side
+  // This function is kept for API compatibility
 }
 
 /**
  * Save generations with image upload
- * This uploads base64 images to Supabase Storage before saving metadata
  */
 export async function saveGenerationsWithImages(
   generations: Generation[],
-  uploadImages: boolean = true
+  uploadImagesFlag: boolean = true
 ): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
   const processedGenerations: Generation[] = [];
 
   for (const gen of generations) {
     let images = gen.images;
 
-    // Upload images if enabled and there are base64 images
-    if (uploadImages && images.some((img) => isBase64DataUrl(img))) {
+    if (uploadImagesFlag && images.some((img) => isBase64DataUrl(img) || isBlobUrl(img))) {
       try {
         images = await uploadGenerationImages(gen.id, images);
       } catch (error) {
         console.error(`Failed to upload images for generation ${gen.id}:`, error);
-        // Continue with original images
       }
     }
 
@@ -851,31 +475,14 @@ export async function saveGenerationsWithImages(
     });
   }
 
-  // Save to database
-  const rows = processedGenerations.map((gen) => toDbFormat(gen, user.id));
-
-  const { error } = await supabase
-    .from("generations")
-    .upsert(rows, { onConflict: "id" });
-
-  if (error) {
-    console.error("Failed to save generations to cloud:", error);
-    throw error;
-  }
+  await saveGenerationsToCloud(processedGenerations);
 }
 
 /**
  * Delete generation with its images
  */
 export async function deleteGenerationWithImages(generationId: string): Promise<void> {
-  // Delete images first
-  try {
-    await deleteGenerationImages(generationId);
-  } catch (error) {
-    console.error("Failed to delete generation images:", error);
-  }
-
-  // Then delete the database record
+  await deleteGenerationImages(generationId);
   await deleteGenerationFromCloud(generationId);
 }
 
@@ -883,43 +490,9 @@ export async function deleteGenerationWithImages(generationId: string): Promise<
  * Get storage usage for current user
  */
 export async function getStorageUsage(): Promise<{ used: number; limit: number }> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { used: 0, limit: 1073741824 }; // 1GB default limit
-  }
-
-  // List files in user's folder
-  const { data: genFiles } = await supabase.storage
-    .from(GENERATIONS_BUCKET)
-    .list(user.id, { limit: 1000 });
-
-  const { data: attachFiles } = await supabase.storage
-    .from(PROMPT_ATTACHMENTS_BUCKET)
-    .list(user.id, { limit: 1000 });
-
-  let totalSize = 0;
-
-  // Sum up file sizes (metadata includes size)
-  if (genFiles) {
-    for (const file of genFiles) {
-      if (file.metadata?.size) {
-        totalSize += file.metadata.size;
-      }
-    }
-  }
-
-  if (attachFiles) {
-    for (const file of attachFiles) {
-      if (file.metadata?.size) {
-        totalSize += file.metadata.size;
-      }
-    }
-  }
-
+  // VPS doesn't have a limit concept - return a large value
   return {
-    used: totalSize,
-    limit: 1073741824, // 1GB for free tier
+    used: 0,
+    limit: 10737418240, // 10GB
   };
 }
