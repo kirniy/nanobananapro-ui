@@ -2,12 +2,28 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "./auth-context";
+import { AdminPanel } from "../admin/admin-panel";
 
 export function UserMenu() {
   const { user, isLoading, signInWithGoogle, signInWithGithub, signOut } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [showSignInOptions, setShowSignInOptions] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Check if user is admin
+  useEffect(() => {
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+
+    fetch("/api/admin/check")
+      .then((res) => res.json())
+      .then((data) => setIsAdmin(data.isAdmin || false))
+      .catch(() => setIsAdmin(false));
+  }, [user]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -107,6 +123,18 @@ export function UserMenu() {
               <CloudCheckIcon className="h-3.5 w-3.5" />
               <span>Cloud sync enabled</span>
             </div>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  setIsAdminPanelOpen(true);
+                  setIsOpen(false);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-[var(--bg-input)] transition-colors"
+              >
+                <SettingsIcon className="h-4 w-4" />
+                <span>Admin Settings</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 signOut();
@@ -120,6 +148,8 @@ export function UserMenu() {
           </div>
         </div>
       )}
+
+      <AdminPanel isOpen={isAdminPanelOpen} onClose={() => setIsAdminPanelOpen(false)} />
     </div>
   );
 }
@@ -186,6 +216,15 @@ function ChevronIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function SettingsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }

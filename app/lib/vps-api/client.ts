@@ -232,6 +232,31 @@ class VpsApiClient {
     const cleanPath = path.startsWith("/") ? path : `/${path}`;
     return `${this.baseUrl.replace("/api", "")}${cleanPath}`;
   }
+
+  // ==================== APP SETTINGS (Admin) ====================
+
+  async getAppSetting(key: string) {
+    // This endpoint doesn't require auth for shared_gemini_key
+    const response = await fetch(`${this.baseUrl}/app-settings/${key}`);
+    if (!response.ok) {
+      return null;
+    }
+    return response.json() as Promise<{ value: string } | null>;
+  }
+
+  async updateAppSetting(key: string, value: string) {
+    return this.request<{ key: string; value: string; updated_at: string; updated_by: string }>(
+      `/app-settings/${key}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ value }),
+      }
+    );
+  }
+
+  async checkAdmin() {
+    return this.request<{ isAdmin: boolean }>("/admin/check");
+  }
 }
 
 // Types

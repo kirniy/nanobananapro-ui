@@ -66,6 +66,7 @@ export function Lightbox({
   const [compareSliderPosition, setCompareSliderPosition] = useState(50);
   const [isDownloadingComparison, setIsDownloadingComparison] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [copiedImage, setCopiedImage] = useState(false);
   const [showUpscaleMenu, setShowUpscaleMenu] = useState(false);
   const [heartBurst, setHeartBurst] = useState(false);
   const [showPromptExpanded, setShowPromptExpanded] = useState(false);
@@ -89,6 +90,52 @@ export function Lightbox({
       console.error("Failed to copy prompt", error);
     }
   }, [entry.prompt]);
+
+  const handleCopyImage = useCallback(async () => {
+    try {
+      const response = await fetch(entry.src);
+      const blob = await response.blob();
+
+      // Try to use ClipboardItem for modern browsers
+      if (typeof ClipboardItem !== "undefined") {
+        // Convert to PNG if needed for clipboard compatibility
+        let imageBlob = blob;
+        if (blob.type !== "image/png") {
+          const canvas = document.createElement("canvas");
+          const img = new window.Image();
+          img.crossOrigin = "anonymous";
+
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error("Failed to load image"));
+            img.src = URL.createObjectURL(blob);
+          });
+
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0);
+
+          imageBlob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob(
+              (b) => (b ? resolve(b) : reject(new Error("Failed to convert to PNG"))),
+              "image/png"
+            );
+          });
+        }
+
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": imageBlob }),
+        ]);
+        setCopiedImage(true);
+        setTimeout(() => setCopiedImage(false), 2000);
+      } else {
+        console.warn("Clipboard API not supported for images in this browser");
+      }
+    } catch (error) {
+      console.error("Failed to copy image", error);
+    }
+  }, [entry.src]);
 
   const handleFavoriteClick = useCallback(() => {
     if (!onToggleFavorite) return;
@@ -165,10 +212,16 @@ export function Lightbox({
         handleFavoriteClick();
       }
 
-      // C - Copy prompt
-      if (event.key === "c" || event.key === "C") {
+      // C - Copy prompt (without Shift)
+      if ((event.key === "c" || event.key === "C") && !event.shiftKey) {
         event.preventDefault();
         void handleCopyPrompt();
+      }
+
+      // Shift+C - Copy image
+      if ((event.key === "c" || event.key === "C") && event.shiftKey) {
+        event.preventDefault();
+        void handleCopyImage();
       }
 
       // D - Download
@@ -196,7 +249,7 @@ export function Lightbox({
     return () => {
       document.removeEventListener("keydown", handleKey);
     };
-  }, [onPrev, onNext, onClose, canGoPrev, canGoNext, handleFavoriteClick, isDownloading, onDownload, canUpscale, onShowShortcuts, showUpscaleMenu, handleCopyPrompt]);
+  }, [onPrev, onNext, onClose, canGoPrev, canGoNext, handleFavoriteClick, isDownloading, onDownload, canUpscale, onShowShortcuts, showUpscaleMenu, handleCopyPrompt, handleCopyImage]);
 
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.stopPropagation();
@@ -585,6 +638,20 @@ export function Lightbox({
                 {isDownloading ? <SpinnerIcon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
                 <span className="hidden sm:inline">{isDownloading ? "Saving..." : "Download"}</span>
                 <span className="kbd kbd-sm ml-1 bg-black/20 border-black/30 text-[var(--accent-primary-text)]">D</span>
+              </button>
+
+              {/* Copy Image Button */}
+              <button
+                type="button"
+                onClick={handleCopyImage}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-all ${copiedImage
+                  ? "bg-[var(--color-success)] border-[var(--color-success)] text-white"
+                  : "bg-[var(--bg-input)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-white hover:border-[var(--text-muted)]"
+                  }`}
+                title="Copy image to clipboard (Shift+C)"
+              >
+                {copiedImage ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+                <span className="kbd kbd-sm">⇧C</span>
               </button>
 
               {/* Upscale Button */}

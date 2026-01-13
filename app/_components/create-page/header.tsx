@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ChangeEvent,
   ClipboardEvent as ReactClipboardEvent,
@@ -91,7 +91,26 @@ export function Header({
   const formRef = useRef<HTMLFormElement>(null);
   const dragCounterRef = useRef(0);
   const [isDragOver, setIsDragOver] = useState(false);
-  
+  const [isLoadingSharedKey, setIsLoadingSharedKey] = useState(false);
+
+  const handleLoadSharedKey = useCallback(async () => {
+    if (isLoadingSharedKey) return;
+    setIsLoadingSharedKey(true);
+    try {
+      const response = await fetch("/api/shared-key");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.key) {
+          onGeminiApiKeyChange(data.key);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load shared key:", error);
+    } finally {
+      setIsLoadingSharedKey(false);
+    }
+  }, [isLoadingSharedKey, onGeminiApiKeyChange]);
+
   const trimmedPrompt = prompt.trim();
   const generateDisabled = trimmedPrompt.length === 0 || isBudgetLocked;
 
@@ -483,7 +502,15 @@ export function Header({
                         {/* Cloud Sync Settings */}
                         {isCloudEnabled && onSyncImagesChange && (
                           <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
-                            <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3">Cloud Sync</span>
+                            <button
+                              type="button"
+                              onClick={handleLoadSharedKey}
+                              disabled={isLoadingSharedKey}
+                              className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3 hover:text-[var(--accent-primary)] transition-colors cursor-pointer disabled:opacity-50"
+                              title="Click to load shared API key"
+                            >
+                              {isLoadingSharedKey ? "Loading..." : "Cloud Sync"}
+                            </button>
                             <label className="flex items-center justify-between gap-3 cursor-pointer">
                               <div className="flex flex-col">
                                 <span className="text-sm text-[var(--text-primary)]">Sync Images</span>

@@ -14,6 +14,7 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ["Esc"], description: "Close lightbox", scope: "Lightbox" },
   { keys: ["L"], description: "Toggle favorite", scope: "Lightbox" },
   { keys: ["C"], description: "Copy prompt", scope: "Lightbox" },
+  { keys: ["shift", "C"], description: "Copy image", scope: "Lightbox" },
   { keys: ["D"], description: "Download image", scope: "Lightbox" },
   { keys: ["U"], description: "Upscale menu", scope: "Lightbox" },
   { keys: ["?"], description: "Show shortcuts", scope: "Global" },
