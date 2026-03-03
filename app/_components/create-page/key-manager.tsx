@@ -200,7 +200,7 @@ export function KeyManager({ keys, onChange }: KeyManagerProps) {
           {showPaste ? "Cancel" : "+ Add Keys"}
         </button>
 
-        {keys.length > 0 && (
+        {keys.length > 0 && !showPaste && (
           <button
             type="button"
             onClick={testAllKeys}
@@ -211,7 +211,7 @@ export function KeyManager({ keys, onChange }: KeyManagerProps) {
           </button>
         )}
 
-        {hasDeadKeys && !isTesting && (
+        {hasDeadKeys && !isTesting && !showPaste && (
           <button
             type="button"
             onClick={removeDead}
