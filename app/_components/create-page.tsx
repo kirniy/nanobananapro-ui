@@ -193,7 +193,7 @@ export function CreatePage() {
   const [googleSearch, setGoogleSearch] = useState(false);
   const [imageCount, setImageCount] = useState<number>(4);
   const [apiKey, setApiKey] = useState("");
-  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [geminiApiKeys, setGeminiApiKeys] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<PromptAttachment[]>([]);
   const [attachmentPreview, setAttachmentPreview] = useState<PromptAttachment | null>(null);
   const [generations, setGenerations] = useState<Generation[]>([]);
@@ -302,9 +302,22 @@ export function CreatePage() {
           setApiKey(storedApiKey);
         }
 
-        const storedGeminiApiKey = window.localStorage.getItem(STORAGE_KEYS.geminiApiKey);
-        if (storedGeminiApiKey !== null) {
-          setGeminiApiKey(storedGeminiApiKey);
+        const rawGeminiKeys = window.localStorage.getItem(STORAGE_KEYS.geminiApiKey);
+        if (rawGeminiKeys !== null) {
+          try {
+            const parsed = JSON.parse(rawGeminiKeys);
+            if (Array.isArray(parsed)) {
+              setGeminiApiKeys(parsed.filter((k: unknown) => typeof k === "string" && k.length > 0));
+            } else {
+              // Not an array — treat as single key string (migration)
+              const trimmed = String(rawGeminiKeys).trim();
+              if (trimmed.length > 0) setGeminiApiKeys([trimmed]);
+            }
+          } catch {
+            // Old format: plain string, not JSON
+            const trimmed = rawGeminiKeys.trim();
+            if (trimmed.length > 0) setGeminiApiKeys([trimmed]);
+          }
         }
 
         let generationData: Generation[] | null = null;
@@ -382,7 +395,7 @@ export function CreatePage() {
       return;
     }
 
-    const noKeys = apiKey.trim().length === 0 && geminiApiKey.trim().length === 0;
+    const noKeys = apiKey.trim().length === 0 && geminiApiKeys.length === 0;
     if (noKeys) {
       debugLog("pending:cleared-no-keys", {
         count: pendingGenerations.length,
@@ -409,7 +422,7 @@ export function CreatePage() {
     setPendingGenerations([]);
     pendingReconciledRef.current = true;
     pendingHydratedRef.current = false;
-  }, [pendingGenerations, apiKey, geminiApiKey]);
+  }, [pendingGenerations, apiKey, geminiApiKeys]);
 
   const activeFeed = useMemo(
     () => [...pendingGenerations, ...generations],
@@ -444,8 +457,7 @@ export function CreatePage() {
     const normalizedApiKey = apiKey.trim();
     safePersist(STORAGE_KEYS.apiKey, normalizedApiKey.length > 0 ? normalizedApiKey : null);
 
-    const normalizedGeminiApiKey = geminiApiKey.trim();
-    safePersist(STORAGE_KEYS.geminiApiKey, normalizedGeminiApiKey.length > 0 ? normalizedGeminiApiKey : null);
+    safePersist(STORAGE_KEYS.geminiApiKey, geminiApiKeys.length > 0 ? JSON.stringify(geminiApiKeys) : null);
 
   }, [
     aspect,
@@ -456,7 +468,7 @@ export function CreatePage() {
     googleSearch,
     imageCount,
     apiKey,
-    geminiApiKey,
+    geminiApiKeys,
   ]);
 
   // Enforce model constraints when model changes
@@ -774,13 +786,13 @@ export function CreatePage() {
     });
 
     const trimmedApiKey = apiKey.trim();
-    const trimmedGeminiApiKey = geminiApiKey.trim();
+    const activeGeminiKey = (geminiApiKeys[0] ?? "").trim();
 
     debugLog("submit:request", {
       pendingId,
       provider,
       apiKeyProvided: trimmedApiKey.length > 0,
-      geminiApiKeyProvided: trimmedGeminiApiKey.length > 0,
+      geminiApiKeyProvided: activeGeminiKey.length > 0,
       inputImages: inputImageSnapshot.length,
       imageCount
     });
@@ -795,7 +807,7 @@ export function CreatePage() {
       googleSearch,
       outputFormat,
       apiKey: trimmedApiKey.length > 0 ? trimmedApiKey : undefined,
-      geminiApiKey: trimmedGeminiApiKey.length > 0 ? trimmedGeminiApiKey : undefined,
+      geminiApiKey: activeGeminiKey.length > 0 ? activeGeminiKey : undefined,
       inputImages: inputImageSnapshot,
     });
 
@@ -996,7 +1008,7 @@ export function CreatePage() {
         googleSearch,
         outputFormat: generation.outputFormat ?? defaultOutputFormat,
         apiKey: apiKey.trim() || undefined,
-        geminiApiKey: geminiApiKey.trim() || undefined,
+        geminiApiKey: (geminiApiKeys[0] ?? "").trim() || undefined,
         inputImages: inputImageSnapshot,
       });
 
@@ -1050,7 +1062,7 @@ export function CreatePage() {
           });
         });
     },
-    [apiKey, geminiApiKey, generations],
+    [apiKey, geminiApiKeys, generations],
   );
 
   const handleDeleteGeneration = useCallback(
@@ -1138,7 +1150,7 @@ export function CreatePage() {
         googleSearch,
         outputFormat: entry.outputFormat ?? defaultOutputFormat,
         apiKey: apiKey.trim() || undefined,
-        geminiApiKey: geminiApiKey.trim() || undefined,
+        geminiApiKey: (geminiApiKeys[0] ?? "").trim() || undefined,
         inputImages: inputImageSnapshot,
       });
 
@@ -1173,7 +1185,7 @@ export function CreatePage() {
           );
         });
     },
-    [apiKey, geminiApiKey],
+    [apiKey, geminiApiKeys],
   );
 
   const handleUsePrompt = useCallback(
@@ -1362,7 +1374,7 @@ export function CreatePage() {
               googleSearch={googleSearch}
               imageCount={imageCount}
               apiKey={apiKey}
-              geminiApiKey={geminiApiKey}
+              geminiApiKeys={geminiApiKeys}
               isBudgetLocked={false}
               isSettingsOpen={isSettingsOpen}
               onSubmit={handleSubmit}
@@ -1375,7 +1387,7 @@ export function CreatePage() {
               onGoogleSearchChange={setGoogleSearch}
               onImageCountChange={setImageCount}
               onApiKeyChange={setApiKey}
-              onGeminiApiKeyChange={setGeminiApiKey}
+              onGeminiApiKeysChange={setGeminiApiKeys}
               onToggleSettings={setIsSettingsOpen}
               attachments={attachments}
               onAddAttachments={handleAddAttachments}

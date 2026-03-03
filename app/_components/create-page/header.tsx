@@ -22,6 +22,7 @@ import {
 } from "../../lib/seedream-options";
 import { LightningIcon, PlusIcon, SettingsIcon, GlobeIcon } from "./icons";
 import { AttachmentPreviewList } from "./attachment-preview";
+import { KeyManager } from "./key-manager";
 import type { PromptAttachment } from "./types";
 import { resizeTextarea } from "./utils";
 
@@ -35,7 +36,7 @@ type HeaderProps = {
   googleSearch: boolean;
   imageCount: number;
   apiKey: string;
-  geminiApiKey: string;
+  geminiApiKeys: string[];
   isBudgetLocked: boolean;
   isSettingsOpen: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -48,7 +49,7 @@ type HeaderProps = {
   onGoogleSearchChange: (value: boolean) => void;
   onImageCountChange: (value: number) => void;
   onApiKeyChange: (value: string) => void;
-  onGeminiApiKeyChange: (value: string) => void;
+  onGeminiApiKeysChange: (keys: string[]) => void;
   onToggleSettings: Dispatch<SetStateAction<boolean>>;
   attachments: PromptAttachment[];
   onAddAttachments: (files: File[]) => void;
@@ -71,7 +72,7 @@ export function Header({
   googleSearch,
   imageCount,
   apiKey,
-  geminiApiKey,
+  geminiApiKeys,
   isBudgetLocked,
   isSettingsOpen,
   onSubmit,
@@ -84,7 +85,7 @@ export function Header({
   onGoogleSearchChange,
   onImageCountChange,
   onApiKeyChange,
-  onGeminiApiKeyChange,
+  onGeminiApiKeysChange,
   onToggleSettings,
   attachments,
   onAddAttachments,
@@ -112,7 +113,10 @@ export function Header({
       if (response.ok) {
         const data = await response.json();
         if (data.key) {
-          onGeminiApiKeyChange(data.key);
+          const key = String(data.key).trim();
+          if (key && !geminiApiKeys.includes(key)) {
+            onGeminiApiKeysChange([key, ...geminiApiKeys]);
+          }
         }
       }
     } catch (error) {
@@ -120,7 +124,7 @@ export function Header({
     } finally {
       setIsLoadingSharedKey(false);
     }
-  }, [isLoadingSharedKey, onGeminiApiKeyChange]);
+  }, [isLoadingSharedKey, geminiApiKeys, onGeminiApiKeysChange]);
 
   const trimmedPrompt = prompt.trim();
   const generateDisabled = trimmedPrompt.length === 0 || isBudgetLocked;
@@ -526,25 +530,11 @@ export function Header({
                           </div>
                         ) : null}
 
-                        <div className="space-y-2">
-                            <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Gemini API Key</span>
-                            <input
-                                value={geminiApiKey}
-                                onChange={(e) => onGeminiApiKeyChange(e.target.value)}
-                                type="password"
-                                placeholder="AIzaSy... (Gemini API)"
-                                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-secondary)] focus:border-white focus:text-white focus:outline-none transition-all"
-                            />
-                            <p className="text-[9px] text-[var(--text-muted)]">
-                              Gemini API runs on the Generative Language endpoint.
-                            </p>
-                        </div>
+                        <KeyManager keys={geminiApiKeys} onChange={onGeminiApiKeysChange} />
 
                         <p className="text-[10px] font-bold text-orange-400 mt-1 text-center">
-                          ⚠️ API calls may fail or incur charges; you are fully responsible for any usage.
+                          API calls may fail or incur charges; you are fully responsible for any usage.
                         </p>
-
-                        <p className="text-[10px] text-[var(--text-muted)] text-center">Keys are stored locally on your device.</p>
 
                         {/* Cloud Sync Settings */}
                         {isCloudEnabled && onSyncImagesChange && (
