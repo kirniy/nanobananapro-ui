@@ -4,7 +4,9 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import {
   getAspectDescription,
+  getModelLabel,
   getQualityLabel,
+  type ModelId,
 } from "../../lib/seedream-options";
 import { formatDisplayDate } from "./utils";
 import type { Generation } from "./types";
@@ -226,7 +228,10 @@ export function GenerationDetailsCard({
       {generation && !isInterrupted && (
         <div className="mt-auto pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
           {/* Tech Badges */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--text-secondary)]">
+              {getModelLabel((generation.model ?? "gemini-3-pro-image-preview") as ModelId)}
+            </span>
             <span className="inline-flex items-center rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--text-secondary)]">
               {getQualityLabel(generation.quality)}
             </span>

@@ -13,11 +13,14 @@ import {
   QUALITY_OPTIONS,
   OUTPUT_FORMAT_OPTIONS,
   PROVIDER_OPTIONS,
+  MODEL_DEFINITIONS,
+  getModelDefinition,
+  type ModelId,
   type QualityKey,
   type OutputFormat,
   type Provider,
 } from "../../lib/seedream-options";
-import { LightningIcon, PlusIcon, SettingsIcon } from "./icons";
+import { LightningIcon, PlusIcon, SettingsIcon, GlobeIcon } from "./icons";
 import { AttachmentPreviewList } from "./attachment-preview";
 import type { PromptAttachment } from "./types";
 import { resizeTextarea } from "./utils";
@@ -28,6 +31,8 @@ type HeaderProps = {
   quality: QualityKey;
   outputFormat: OutputFormat;
   provider: Provider;
+  model: ModelId;
+  googleSearch: boolean;
   imageCount: number;
   apiKey: string;
   geminiApiKey: string;
@@ -39,6 +44,8 @@ type HeaderProps = {
   onQualityChange: (value: QualityKey) => void;
   onOutputFormatChange: (value: OutputFormat) => void;
   onProviderChange: (value: Provider) => void;
+  onModelChange: (value: ModelId) => void;
+  onGoogleSearchChange: (value: boolean) => void;
   onImageCountChange: (value: number) => void;
   onApiKeyChange: (value: string) => void;
   onGeminiApiKeyChange: (value: string) => void;
@@ -60,6 +67,8 @@ export function Header({
   quality,
   outputFormat,
   provider,
+  model,
+  googleSearch,
   imageCount,
   apiKey,
   geminiApiKey,
@@ -71,6 +80,8 @@ export function Header({
   onQualityChange,
   onOutputFormatChange,
   onProviderChange,
+  onModelChange,
+  onGoogleSearchChange,
   onImageCountChange,
   onApiKeyChange,
   onGeminiApiKeyChange,
@@ -337,6 +348,42 @@ export function Header({
             {/* Control Bar (Integrated) */}
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-b-[20px] bg-[var(--bg-subtle)] px-4 py-3 border-t border-[var(--border-subtle)]">
                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Model Selector */}
+                     <div className="relative group/select">
+                        <select
+                            value={model}
+                            onChange={(event) => onModelChange(event.target.value as ModelId)}
+                            className="appearance-none cursor-pointer rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] pl-3 pr-8 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)] hover:text-white hover:border-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-white/20 transition-colors"
+                        >
+                             {MODEL_DEFINITIONS.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                {m.label}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
+                             <svg width="8" height="5" viewBox="0 0 8 5" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1 1L4 4L7 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </div>
+                     </div>
+
+                    {/* Google Search Toggle */}
+                    {getModelDefinition(model)?.supportsGoogleSearch ? (
+                      <button
+                        type="button"
+                        onClick={() => onGoogleSearchChange(!googleSearch)}
+                        title={googleSearch ? "Google Search grounding enabled" : "Enable Google Search grounding"}
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-all ${
+                          googleSearch
+                            ? "bg-blue-500 text-white border-blue-500"
+                            : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-input)]"
+                        }`}
+                      >
+                        <GlobeIcon className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+
                     {/* Aspect Selector */}
                      <div className="relative group/select">
                         <select
@@ -444,9 +491,10 @@ export function Header({
              {isSettingsOpen ? (
                 <div ref={panelRef} className="absolute bottom-[calc(100%+8px)] left-0 right-0 z-20 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-1 duration-200">
                      <div className="flex flex-col gap-4">
-                        <div className="space-y-2">
-                           <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Provider</span>
-                           <div className="flex gap-2">
+                        {getModelDefinition(model)?.supportsFal ? (
+                          <div className="space-y-2">
+                            <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Provider</span>
+                            <div className="flex gap-2">
                               {PROVIDER_OPTIONS.map((opt) => (
                                 <button
                                   key={opt.value}
@@ -461,10 +509,11 @@ export function Header({
                                   {opt.label}
                                 </button>
                               ))}
-                           </div>
-                        </div>
+                            </div>
+                          </div>
+                        ) : null}
 
-                        {provider === "fal" ? (
+                        {provider === "fal" && getModelDefinition(model)?.supportsFal ? (
                           <div className="space-y-2">
                               <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">FAL API Key</span>
                               <input
@@ -477,21 +526,19 @@ export function Header({
                           </div>
                         ) : null}
 
-                        {provider === "gemini" ? (
-                          <div className="space-y-2">
-                              <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Gemini API Key</span>
-                              <input
-                                  value={geminiApiKey}
-                                  onChange={(e) => onGeminiApiKeyChange(e.target.value)}
-                                  type="password"
-                                  placeholder="AIzaSy... (Gemini API)"
-                                  className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-secondary)] focus:border-white focus:text-white focus:outline-none transition-all"
-                              />
-                              <p className="text-[9px] text-[var(--text-muted)]">
-                                Gemini API runs on the Generative Language endpoint.
-                              </p>
-                          </div>
-                        ) : null}
+                        <div className="space-y-2">
+                            <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Gemini API Key</span>
+                            <input
+                                value={geminiApiKey}
+                                onChange={(e) => onGeminiApiKeyChange(e.target.value)}
+                                type="password"
+                                placeholder="AIzaSy... (Gemini API)"
+                                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-secondary)] focus:border-white focus:text-white focus:outline-none transition-all"
+                            />
+                            <p className="text-[9px] text-[var(--text-muted)]">
+                              Gemini API runs on the Generative Language endpoint.
+                            </p>
+                        </div>
 
                         <p className="text-[10px] font-bold text-orange-400 mt-1 text-center">
                           ⚠️ API calls may fail or incur charges; you are fully responsible for any usage.

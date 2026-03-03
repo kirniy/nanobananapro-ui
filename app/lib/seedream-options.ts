@@ -1,6 +1,46 @@
 export type Provider = "fal" | "gemini";
 export type OutputFormat = "png" | "jpeg" | "webp";
 
+export type ModelId =
+  | "gemini-3-pro-image-preview"
+  | "gemini-3.1-flash-image-preview";
+
+export type ModelDefinition = {
+  id: ModelId;
+  label: string;
+  maxImages: number;
+  supportsEditing: boolean;
+  supportsGoogleSearch: boolean;
+  supportsFal: boolean;
+};
+
+export const MODEL_DEFINITIONS: ModelDefinition[] = [
+  {
+    id: "gemini-3-pro-image-preview",
+    label: "Nano Banana Pro",
+    maxImages: 4,
+    supportsEditing: true,
+    supportsGoogleSearch: true,
+    supportsFal: true,
+  },
+  {
+    id: "gemini-3.1-flash-image-preview",
+    label: "Nano Banana 2",
+    maxImages: 4,
+    supportsEditing: true,
+    supportsGoogleSearch: true,
+    supportsFal: false,
+  },
+];
+
+export function getModelDefinition(id: ModelId): ModelDefinition | undefined {
+  return MODEL_DEFINITIONS.find((m) => m.id === id);
+}
+
+export function getModelLabel(id: ModelId): string {
+  return getModelDefinition(id)?.label ?? id;
+}
+
 export const PROVIDER_OPTIONS: { value: Provider; label: string }[] = [
   { value: "fal", label: "FAL.ai" },
   { value: "gemini", label: "Gemini API" },

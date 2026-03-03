@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 
 import { debugLog } from "./create-page/logger";
 import { generateSeedream } from "../lib/generate-seedream";
-import { calculateImageSize, type AspectKey, type QualityKey, type Provider, type OutputFormat } from "../lib/seedream-options";
+import { calculateImageSize, getModelDefinition, MODEL_DEFINITIONS, type AspectKey, type ModelId, type QualityKey, type Provider, type OutputFormat } from "../lib/seedream-options";
 import { EmptyState } from "./create-page/empty-state";
 import { GenerationGroup } from "./create-page/generation-list";
 import { GalleryView } from "./create-page/gallery-view";
@@ -43,6 +43,8 @@ const STORAGE_KEYS = {
   budgetCents: "seedream:budget_cents",
   spentCents: "seedream:spent_cents",
   geminiApiKey: "seedream:gemini_api_key",
+  model: "seedream:model",
+  googleSearch: "seedream:google_search",
 } as const;
 
 const MAX_ATTACHMENTS = 8;
@@ -186,7 +188,9 @@ export function CreatePage() {
   const [aspect, setAspect] = useState<AspectKey>(defaultAspect);
   const [quality, setQuality] = useState<QualityKey>(defaultQuality);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>(defaultOutputFormat);
-  const [provider, setProvider] = useState<Provider>("fal");
+  const [provider, setProvider] = useState<Provider>("gemini");
+  const [model, setModel] = useState<ModelId>("gemini-3-pro-image-preview");
+  const [googleSearch, setGoogleSearch] = useState(false);
   const [imageCount, setImageCount] = useState<number>(4);
   const [apiKey, setApiKey] = useState("");
   const [geminiApiKey, setGeminiApiKey] = useState("");
@@ -268,6 +272,16 @@ export function CreatePage() {
         const storedProvider = window.localStorage.getItem(STORAGE_KEYS.provider);
         if (storedProvider === "fal" || storedProvider === "gemini") {
           setProvider(storedProvider);
+        }
+
+        const storedModel = window.localStorage.getItem(STORAGE_KEYS.model);
+        if (storedModel && MODEL_DEFINITIONS.some((m) => m.id === storedModel)) {
+          setModel(storedModel as ModelId);
+        }
+
+        const storedGoogleSearch = window.localStorage.getItem(STORAGE_KEYS.googleSearch);
+        if (storedGoogleSearch === "true") {
+          setGoogleSearch(true);
         }
 
         const storedOutputFormat = window.localStorage.getItem(STORAGE_KEYS.outputFormat);
@@ -423,6 +437,8 @@ export function CreatePage() {
     safePersist(STORAGE_KEYS.quality, quality);
     safePersist(STORAGE_KEYS.outputFormat, outputFormat);
     safePersist(STORAGE_KEYS.provider, provider);
+    safePersist(STORAGE_KEYS.model, model);
+    safePersist(STORAGE_KEYS.googleSearch, googleSearch ? "true" : "false");
     safePersist(STORAGE_KEYS.imageCount, String(imageCount));
 
     const normalizedApiKey = apiKey.trim();
@@ -436,10 +452,24 @@ export function CreatePage() {
     quality,
     outputFormat,
     provider,
+    model,
+    googleSearch,
     imageCount,
     apiKey,
     geminiApiKey,
   ]);
+
+  // Enforce model constraints when model changes
+  useEffect(() => {
+    const def = getModelDefinition(model);
+    if (!def) return;
+    if (!def.supportsFal && provider === "fal") {
+      setProvider("gemini");
+    }
+    if (!def.supportsGoogleSearch && googleSearch) {
+      setGoogleSearch(false);
+    }
+  }, [model, provider, googleSearch]);
 
   useEffect(() => {
     if (!storageHydratedRef.current || typeof window === "undefined") {
@@ -511,6 +541,7 @@ export function CreatePage() {
           aspect: generation.aspect,
           quality: generation.quality,
           provider: generation.provider,
+          model: generation.model,
           outputFormat: generation.outputFormat,
           size: generation.size,
           inputImages: generation.inputImages ?? [],
@@ -760,6 +791,8 @@ export function CreatePage() {
       quality,
       numImages: imageCount,
       provider,
+      model,
+      googleSearch,
       outputFormat,
       apiKey: trimmedApiKey.length > 0 ? trimmedApiKey : undefined,
       geminiApiKey: trimmedGeminiApiKey.length > 0 ? trimmedGeminiApiKey : undefined,
@@ -959,6 +992,8 @@ export function CreatePage() {
         quality: generation.quality,
         numImages,
         provider: generation.provider,
+        model: generation.model ?? model,
+        googleSearch,
         outputFormat: generation.outputFormat ?? defaultOutputFormat,
         apiKey: apiKey.trim() || undefined,
         geminiApiKey: geminiApiKey.trim() || undefined,
@@ -1098,7 +1133,9 @@ export function CreatePage() {
         aspect: entry.aspect as AspectKey,
         quality: targetQuality,
         numImages: 1,
-        provider: entry.provider ?? "fal",
+        provider: entry.provider ?? "gemini",
+        model: model,
+        googleSearch,
         outputFormat: entry.outputFormat ?? defaultOutputFormat,
         apiKey: apiKey.trim() || undefined,
         geminiApiKey: geminiApiKey.trim() || undefined,
@@ -1321,6 +1358,8 @@ export function CreatePage() {
               quality={quality}
               outputFormat={outputFormat}
               provider={provider}
+              model={model}
+              googleSearch={googleSearch}
               imageCount={imageCount}
               apiKey={apiKey}
               geminiApiKey={geminiApiKey}
@@ -1332,6 +1371,8 @@ export function CreatePage() {
               onQualityChange={setQuality}
               onOutputFormatChange={setOutputFormat}
               onProviderChange={setProvider}
+              onModelChange={setModel}
+              onGoogleSearchChange={setGoogleSearch}
               onImageCountChange={setImageCount}
               onApiKeyChange={setApiKey}
               onGeminiApiKeyChange={setGeminiApiKey}

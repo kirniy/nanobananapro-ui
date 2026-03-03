@@ -3,8 +3,10 @@
 import {
   calculateImageSize,
   getAspectDefinition,
+  getModelDefinition,
   getQualityDefinition,
   type AspectKey,
+  type ModelId,
   type QualityKey,
   type Provider,
   type OutputFormat,
@@ -34,6 +36,8 @@ export type GenerateSeedreamArgs = {
   outputFormat?: OutputFormat;
   numImages?: number;
   provider: Provider;
+  model?: ModelId;
+  googleSearch?: boolean;
   apiKey?: string; // FAL Key
   geminiApiKey?: string; // Gemini API key (Generative Language)
   sizeOverride?: { width: number; height: number };
@@ -46,6 +50,7 @@ export type SeedreamGeneration = {
   quality: QualityKey;
   outputFormat: OutputFormat;
   provider: Provider;
+  model?: ModelId;
   createdAt: string;
   size: { width: number; height: number };
   images: string[];
@@ -75,6 +80,8 @@ export async function generateSeedream({
   outputFormat = "png",
   numImages = 4,
   provider,
+  model = "gemini-3-pro-image-preview",
+  googleSearch = false,
   apiKey,
   geminiApiKey,
   sizeOverride,
@@ -256,9 +263,11 @@ export async function generateSeedream({
       payload.image_urls = effectiveInputImages.map((image) => image.url);
     }
 
+    // FAL only supports gemini-3-pro-image-preview
+    const falModel = "gemini-3-pro-image-preview";
     const endpoint = useEditEndpoint
-      ? "https://fal.run/fal-ai/gemini-3-pro-image-preview/edit"
-      : "https://fal.run/fal-ai/gemini-3-pro-image-preview";
+      ? `https://fal.run/fal-ai/${falModel}/edit`
+      : `https://fal.run/fal-ai/${falModel}`;
 
     const response = await fetchWithTimeout(
       endpoint,
@@ -297,6 +306,7 @@ export async function generateSeedream({
       quality,
       outputFormat,
       provider,
+      model,
       createdAt: new Date().toISOString(),
       size,
       images,
@@ -312,6 +322,10 @@ export async function generateSeedream({
       throw new Error("Missing Gemini API key. Add one in settings.");
     }
 
+    const modelDef = getModelDefinition(model);
+    const effectiveModel = modelDef ? model : "gemini-3-pro-image-preview";
+    const useGoogleSearch = googleSearch && (modelDef?.supportsGoogleSearch ?? false);
+
     const basePayload = {
       contents: baseContents,
       generationConfig: {
@@ -321,11 +335,10 @@ export async function generateSeedream({
           imageSize: apiResolution,
         },
       },
+      ...(useGoogleSearch ? { tools: [{ googleSearch: {} }] } : {}),
     };
 
-    // Use the fast native image model to avoid very long turnaround (Pro Image Preview can be slower / gated).
-    // Default to Pro Image Preview. If you hit persistent 5xx errors, swap back to 2.5 flash.
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${encodeURIComponent(
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${effectiveModel}:generateContent?key=${encodeURIComponent(
       resolvedApiKey,
     )}`;
 
@@ -410,6 +423,7 @@ export async function generateSeedream({
       quality,
       outputFormat,
       provider,
+      model,
       createdAt: new Date().toISOString(),
       size,
       images,
