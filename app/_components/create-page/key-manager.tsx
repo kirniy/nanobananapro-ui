@@ -80,6 +80,17 @@ export function KeyManager({ keys, onChange }: KeyManagerProps) {
     [keys, onChange],
   );
 
+  const activateKey = useCallback(
+    (index: number) => {
+      if (index === 0) return;
+      const next = [...keys];
+      const [moved] = next.splice(index, 1);
+      next.unshift(moved);
+      onChange(next);
+    },
+    [keys, onChange],
+  );
+
   const removeDead = useCallback(() => {
     const alive = keys.filter((k) => statuses.get(k) !== "dead");
     const deadKeys = keys.filter((k) => statuses.get(k) === "dead");
@@ -160,17 +171,19 @@ export function KeyManager({ keys, onChange }: KeyManagerProps) {
           {keys.map((key, index) => (
             <div
               key={`${key}-${index}`}
+              onClick={() => activateKey(index)}
               className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-mono transition-colors ${
                 index === 0
                   ? "border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/5 text-[var(--text-primary)]"
-                  : "border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-secondary)]"
+                  : "border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-secondary)] cursor-pointer hover:border-[var(--text-muted)]"
               }`}
+              title={index === 0 ? "Active key" : "Click to set as active"}
             >
-              {index === 0 && (
+              {index === 0 ? (
                 <span className="text-[8px] font-bold uppercase tracking-wider text-[var(--accent-primary)] shrink-0">
                   Active
                 </span>
-              )}
+              ) : null}
               <span className="flex-1 truncate">{maskKey(key)}</span>
               {statusBadge(statuses.get(key))}
               <button
