@@ -110,13 +110,13 @@ export function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                Shared Gemini API Key
+                Shared Gemini / Vertex Key
               </label>
               <input
                 type="text"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
-                placeholder="Enter Gemini API key"
+                placeholder="AIzaSy... or vertex:PROJECT_ID:LOCATION:API_KEY"
                 className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent"
               />
               {sharedKey && (

@@ -11,6 +11,11 @@ import {
   type Provider,
   type OutputFormat,
 } from "./seedream-options";
+import {
+  buildGeminiEndpoint,
+  getGeminiApiKey,
+  parseGeminiKeyTarget,
+} from "./gemini-key-target";
 
 const MIN_IMAGE_DIMENSION = 512;
 const MAX_IMAGE_DIMENSION = 4096;
@@ -39,7 +44,7 @@ export type GenerateSeedreamArgs = {
   model?: ModelId;
   googleSearch?: boolean;
   apiKey?: string; // FAL Key
-  geminiApiKey?: string; // Gemini API key (Generative Language)
+  geminiApiKey?: string; // Gemini API key or vertex:PROJECT_ID:LOCATION:API_KEY descriptor.
   sizeOverride?: { width: number; height: number };
   inputImages?: InputImage[];
 };
@@ -322,6 +327,8 @@ export async function generateSeedream({
       throw new Error("Missing Gemini API key. Add one in settings.");
     }
 
+    const keyTarget = parseGeminiKeyTarget(resolvedApiKey);
+
     const modelDef = getModelDefinition(model);
     const effectiveModel = modelDef ? model : "gemini-3-pro-image-preview";
     const useGoogleSearch = googleSearch && (modelDef?.supportsGoogleSearch ?? false);
@@ -338,9 +345,8 @@ export async function generateSeedream({
       ...(useGoogleSearch ? { tools: [{ googleSearch: {} }] } : {}),
     };
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${effectiveModel}:generateContent?key=${encodeURIComponent(
-      resolvedApiKey,
-    )}`;
+    const endpoint = buildGeminiEndpoint(keyTarget, effectiveModel, "generateContent");
+    const requestApiKey = getGeminiApiKey(keyTarget);
 
     const requests = Array.from({ length: validNumImages }).map(async () => {
       const payload = {
@@ -357,7 +363,7 @@ export async function generateSeedream({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-goog-api-key": resolvedApiKey,
+            "x-goog-api-key": requestApiKey,
           },
           body: JSON.stringify(payload),
           cache: "no-store",

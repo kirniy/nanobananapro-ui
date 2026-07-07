@@ -18,7 +18,7 @@ Browser-based workspace for generating and editing images with the Gemini 3 Pro 
 
 ## Requirements
 - Node.js 18+
-- Provider keys: FAL (Gemini 3 Pro Image Preview) and/or Gemini API. Keys are supplied in-app and stay in your browser; they are not stored on the server.
+- Provider keys: FAL, Gemini API, and/or Vertex AI API-key descriptors. Keys are supplied in-app and stay in your browser; they are not stored on the server unless you intentionally save a shared key as an admin.
 
 ## Setup
 ```bash
@@ -48,6 +48,7 @@ npm run dev
 ## Providers
 - **FAL (default):** Uses `fal-ai/gemini-3-pro-image-preview` with sync mode. Supports `output_format` (`png`, `jpeg`, `webp`), `aspect_ratio`, `resolution`, and optional image edits.
 - **Gemini API:** Calls `gemini-3-pro-image-preview` directly via the Generative Language endpoint. Supply your Gemini API key in settings.
+- **Vertex AI API key:** Paste keys as `vertex:PROJECT_ID:LOCATION:API_KEY`, for example `vertex:my-project:global:AQ...`. The same descriptor format works for local keys and shared admin keys.
 
 ## Notes and limitations
 - Everything is client-initiated; server jobs are not durable. Closing the page interrupts in-flight requests.

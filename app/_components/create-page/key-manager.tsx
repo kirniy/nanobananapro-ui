@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import {
+  buildGeminiEndpoint,
+  getGeminiApiKey,
+  parseGeminiKeyTarget,
+  VERTEX_KEY_FORMAT,
+} from "../../lib/gemini-key-target";
 import { SpinnerIcon } from "./icons";
 
 type KeyStatus = "alive" | "dead" | "unknown" | "testing";
@@ -10,17 +16,20 @@ function maskKey(key: string): string {
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
 }
 
-const TEST_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
-
 async function testSingleKey(key: string): Promise<KeyStatus> {
   try {
-    const response = await fetch(`${TEST_ENDPOINT}?key=${encodeURIComponent(key)}`, {
+    const target = parseGeminiKeyTarget(key);
+    const apiKey = getGeminiApiKey(target);
+    const endpoint = buildGeminiEndpoint(target, "gemini-3-pro-image-preview", "countTokens");
+
+    const response = await fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: "test" }] }],
-        generationConfig: { maxOutputTokens: 1 },
+        contents: [{ role: "user", parts: [{ text: "test" }] }],
       }),
     });
 
@@ -162,7 +171,7 @@ export function KeyManager({ keys, onChange }: KeyManagerProps) {
   return (
     <div className="space-y-2">
       <span className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-        Gemini API Keys
+        Gemini / Vertex Keys
       </span>
 
       {/* Key list */}
@@ -241,7 +250,7 @@ export function KeyManager({ keys, onChange }: KeyManagerProps) {
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder={"Paste API keys, one per line...\nAIzaSy...\nAIzaSy..."}
+            placeholder={`Paste API keys, one per line...\nAIzaSy...\n${VERTEX_KEY_FORMAT}`}
             rows={4}
             className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-xs font-mono text-[var(--text-secondary)] placeholder:text-[var(--text-muted)]/50 focus:border-white focus:text-white focus:outline-none transition-all resize-none"
           />
@@ -257,7 +266,7 @@ export function KeyManager({ keys, onChange }: KeyManagerProps) {
       )}
 
       <p className="text-[9px] text-[var(--text-muted)]">
-        Keys are stored locally on your device and only sent to Google&apos;s API.
+        Keys are stored locally on your device. Use {VERTEX_KEY_FORMAT} for Vertex AI billing keys.
       </p>
     </div>
   );
